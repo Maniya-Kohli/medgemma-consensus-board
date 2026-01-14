@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+artifacts/runs/
+# env files / dirs
+env/
+.env
+.env.*
+.env.example
+
