@@ -212,7 +212,8 @@ if run_btn:
     with col2:
         st.metric("ALERT STATUS", alert_level, delta="Action Required" if score > 0.5 else "Stable", delta_color=alert_color)
     with col3:
-        st.info(f"**🤖 System Summary:** {out['discrepancy_alert']['summary']}")
+        st.subheader("🤖 AI Clinical Summary")
+        st.write(out['discrepancy_alert']['summary'])
 
     st.markdown("---")
 
