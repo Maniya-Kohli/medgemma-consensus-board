@@ -1,0 +1,11 @@
+{
+  "case_id": "CASE_001",
+  "title": "Stable CXR but worsening respiratory symptoms",
+  "image_current": {
+    "type": "url",
+    "value": "https://upload.wikimedia.org/wikipedia/commons/c/c8/Chest_Xray_PA_3-8-2010.png"
+  },
+  "image_prior": null,
+  "audio_current": null,
+  "audio_prior": null
+}

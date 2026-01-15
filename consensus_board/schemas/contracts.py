@@ -4,7 +4,8 @@ from pydantic import BaseModel, Field
 
 
 class EvidenceRef(BaseModel):
-    type: Literal["metric", "note_span", "audio_segment", "image_ref", "text"]
+    # UPDATE: Added "vector_embedding" to the list of allowed types
+    type: Literal["metric", "note_span", "audio_segment", "image_ref", "text", "vector_embedding"]
     id: str
     value: Optional[Any] = None
 
