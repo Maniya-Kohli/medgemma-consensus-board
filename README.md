@@ -60,11 +60,11 @@ On your local machine (Mac/PC):
 
 ```bash
 # 1. Install Dependencies
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 
 # 2. Start the API Backend
-python -m uvicorn apps.api.main:app --reload
+python3 -m uvicorn apps.api.main:app --reload
 
 # 3. Start the Dashboard (New Terminal)
-streamlit run apps/app.py
+python3 -m streamlit run apps/app.py
 ```
