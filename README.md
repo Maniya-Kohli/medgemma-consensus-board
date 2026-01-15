@@ -1,7 +1,5 @@
 # 🧬 Consensus Board: Multimodal Discrepancy Detection
 
-> **Winner, MedGemma Impact Challenge Submission** > _Preventing diagnostic errors by synthesizing conflicting clinical signals._
-
 ## 🚨 The Problem: "Siloed Signals"
 
 In high-pressure clinical environments, **burnout causes blindness**. A fatigued clinician might see a "Stable" Chest X-ray and discharge a patient, missing the subtle "Wheeze" in the lung audio or the "Weight Loss" note buried in history.
