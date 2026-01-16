@@ -1,68 +1,98 @@
-# 🧬 Consensus Board: Multimodal Discrepancy Detection
+# 🧬 MedGemma Consensus Board
 
-## 🚨 The Problem: "Siloed Signals"
+### Hybrid Multimodal AI for Clinical Discrepancy Detection
 
-In high-pressure clinical environments, **burnout causes blindness**. A fatigued clinician might see a "Stable" Chest X-ray and discharge a patient, missing the subtle "Wheeze" in the lung audio or the "Weight Loss" note buried in history.
-**Medical errors are the 3rd leading cause of death.** We believe many of these are due to data disconnects, not lack of skill.
+**Consensus Board** is an agentic safety net designed to catch "hidden discrepancies" in clinical data. It uses a **Cloud-to-Edge** architecture to analyze three distinct streams—Imaging (Vision), Breath Sounds (Audio), and Clinical Notes (Text)—using Google's specialized health models.
 
-## 💡 The Solution: Agentic Consensus
+If a patient has a "Stable" X-ray but "New Crackles" in their audio and "Weight Loss" in their history, MedGemma triggers a **High Risk** alert, forcing a human second look before discharge.
 
-**Consensus Board** is a Hybrid Agentic System that acts as an automated "Safety Net."
-It employs specialized AI Agents to monitor distinct data streams (Vision, Audio, Text) and uses a **Consensus Agent (MedGemma)** to detect contradictions in real-time.
-
-- **If all agents agree:** The dashboard shows Green (Low Risk).
-- **If agents conflict (e.g., Vision says Healthy vs. Audio says Sick):** The dashboard triggers a **RED ALERT**, forcing a "Second Look" before discharge.
+---
 
 ## 🏗️ Hybrid Architecture
 
-We use a **Cloud-to-Edge** architecture to bring heavy Google Health AI models to lightweight hospital devices.
+### 1. The "Brain" (Cloud / Google Colab)
 
-### 1. The Perception Layer (Cloud / T4 GPU)
+Running on T4 GPUs, this layer hosts the heavy-lifting models via a FastAPI server exposed through `ngrok`.
 
-_Runs heavily on Google Colab to process raw signals._
+- **Visual Agent:** `google/medsiglip-448` analyzes Chest X-rays for pneumonia and stability.
+- **Acoustic Agent:** `google/hear-pytorch` processes lung audio into embeddings to detect wheezes or crackles.
+- **Consensus Moderator:** **MedGemma 2** (via manual tensor fusion) acts as the senior moderator, resolving contradictions between agents with robust JSON-prefilling logic.
 
-- **Visual Agent:** Uses **Google MedSigLIP** to analyze Chest X-rays for pneumonia, effusion, and stability.
-- **Acoustic Agent:** Uses **Google HeAR (Health Acoustic Representations)** to generate vector embeddings from lung sounds (wheezes/crackles).
-- **History Agent:** Uses **Google MedGemma 4B** to extract key symptoms (weight loss, fever) from unstructured notes.
+### 2. The "Heart" (Local API)
 
-### 2. The Consensus Layer (Local / Edge)
+A FastAPI backend (`apps/api/main.py`) that orchestrates the workflow:
 
-_Runs locally on the physician's device (MacBook/iPad)._
+- **Artifact Management:** Loads case data from `artifacts/runs/`.
+- **Robust Parsing:** Cleans messy LLM outputs using a multi-stage parser (Markdown, JSON, and Python literal evaluation).
+- **Hybrid Logic:** Combines cloud findings with local "Stub" agents for clinical history extraction.
 
-- **Discrepancy Resolver:** Aggregates the JSON outputs from the Perception Layer. It applies logic to weigh conflicting evidence (e.g., "Acoustic Biomarkers override Visual Stability if confidence > 85%").
-- **Privacy First:** No raw patient images or audio leave the secure perception pipeline; only high-level embeddings and claims reach the dashboard.
+### 3. The "Face" (Streamlit Dashboard)
 
-## 🛠️ Tech Stack
+A physician-facing UI (`apps/app.py`) providing:
 
-- **Models:**
-  - `google/medsiglip-448` (Vision)
-  - `google/hear-pytorch` (Audio)
-  - `google/medgemma-1.5-4b-it` (Language & Logic)
-- **Backend:** FastAPI (Python)
-- **Frontend:** Streamlit
-- **Pipeline:** PyTorch, Hugging Face Transformers, Librosa
+- **Consensus Summary:** Real-time risk scoring and discrepancy alerts.
+- **Case Review:** Interactive visualization of X-rays and synchronized audio playback.
+- **AI Clinical Consultant:** A local chat interface (using **Ollama/Gemma 2**) for interactive case debriefing.
 
-## 🚀 How to Run
+---
 
-### Step 1: Generate the "Perception" Data
+## 🛠️ Setup Instructions
 
-Because `MedSigLIP` and `HeAR` require GPUs, we provide a Colab notebook to generate the case artifacts.
+### Step 1: Launch the Cloud "Brain"
 
-1.  Open `notebooks/MedGemma_Inference_Pipeline.ipynb` in Google Colab.
-2.  Run all cells to process the raw X-rays and Audio.
-3.  Download `case_pack_5.zip` and extract it to `artifacts/runs/`.
+1. Open the provided notebook in **Google Colab**.
+2. Run the **API Server** cell. This will:
 
-### Step 2: Launch the Consensus Board
+- Load MedSigLIP and HeAR models.
+- Start a FastAPI server.
+- Generate a public `ngrok` URL (e.g., `https://your-unique-id.ngrok-free.dev`).
 
-On your local machine (Mac/PC):
+### Step 2: Configure Local Environment
+
+Create a `.env` file in the root directory:
 
 ```bash
-# 1. Install Dependencies
-pip3 install -r requirements.txt
+# The URL generated by ngrok in Colab
+API_URL=https://your-unique-id.ngrok-free.dev
 
-# 2. Start the API Backend
-python3 -m uvicorn apps.api.main:app --reload
+# For the moderator fallback (optional)
+HF_TOKEN=your_huggingface_token
 
-# 3. Start the Dashboard (New Terminal)
-python3 -m streamlit run apps/app.py
 ```
+
+### Step 3: Start the Local System
+
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Launch the Orchestrator (Terminal 1)
+python -m uvicorn apps.api.main:app --reload
+
+# 3. Launch the Dashboard (Terminal 2)
+streamlit run apps/app.py
+
+```
+
+---
+
+## 🚦 Usage & Workflow
+
+1. **Select Case:** Use the sidebar to pick a case (e.g., `CASE_001`).
+2. **Edit Notes:** Modify clinical history in real-time.
+3. **Analyze:** Click "Analyze Case." The system will:
+
+- Send the X-ray to the **Vision Agent** on Colab.
+- Send the lung sound to the **Acoustic Agent** on Colab.
+- Synthesize all findings using the **MedGemma Consensus Agent**.
+
+4. **Consult:** If a discrepancy is found, use the **AI Consultant** tab to ask, _"Why is the risk score high given the stable imaging?"_.
+
+---
+
+## 📦 Tech Stack
+
+- **Models:** `MedSigLIP`, `HeAR`, `MedGemma 1.5`, `Gemma 2`.
+- **Server:** `FastAPI`, `Uvicorn`, `ngrok`.
+- **Frontend:** `Streamlit`, `Pillow`.
+- **Audio:** `librosa`, `torchaudio`.

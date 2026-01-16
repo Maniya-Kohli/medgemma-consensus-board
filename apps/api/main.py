@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import ast
 import requests
 from fastapi import FastAPI
 from dotenv import load_dotenv
@@ -17,60 +18,53 @@ from consensus_board.agents.stub_agents import history_stub
 # 1. LOAD ENVIRONMENT VARIABLES
 load_dotenv()
 
-app = FastAPI(title="Consensus Board API", version="0.4.2 (Stable)")
+app = FastAPI(title="Consensus Board API", version="0.4.5 (Robust)")
 
 API_URL = os.getenv("API_URL")
 
-
 # -----------------------------
-# JSON EXTRACTION (ROBUST)
+# ROBUST JSON PARSER
 # -----------------------------
 def _extract_first_valid_json_object(text: str):
     """
-    Extract the FIRST valid JSON object from messy LLM output.
-    Handles:
-      - extra text before/after JSON
-      - repeated JSON blocks
-      - nested braces (fallback brace-balance scan)
+    Super-robust extractor that handles:
+    1. Markdown code blocks (```json ... ```)
+    2. Standard JSON ({ "key": "val" })
+    3. Python Dicts ({ 'key': 'val' }) - Common LLM error
     """
     if not text or not isinstance(text, str):
         return None
 
-    # Strategy 1: parse non-greedy { ... } candidates
-    candidates = re.findall(r"\{.*?\}", text, flags=re.DOTALL)
-    for c in candidates:
-        c2 = c.replace("“", '"').replace("”", '"').replace("’", "'")
-        try:
-            obj = json.loads(c2)
-            if isinstance(obj, dict):
-                return obj
-        except Exception:
-            continue
+    # 1. Strip Markdown Code Blocks
+    if "```" in text:
+        # Try to extract content inside ```json ... ``` or just ``` ... ```
+        pattern = r"```(?:json)?\s*(.*?)\s*```"
+        match = re.search(pattern, text, re.DOTALL)
+        if match:
+            text = match.group(1)
 
-    # Strategy 2: brace-balance scan (supports nested braces)
+    # 2. Find anything that looks like a JSON object { ... }
+    # We look for the first '{' and the last '}'
     start = text.find("{")
-    if start == -1:
-        return None
-
-    depth = 0
-    for i in range(start, len(text)):
-        ch = text[i]
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                chunk = text[start : i + 1]
-                chunk = chunk.replace("“", '"').replace("”", '"').replace("’", "'")
-                try:
-                    obj = json.loads(chunk)
-                    if isinstance(obj, dict):
-                        return obj
-                except Exception:
-                    return None
+    end = text.rfind("}")
+    
+    if start != -1 and end != -1 and end > start:
+        candidate = text[start : end + 1]
+        
+        # Attempt A: Standard JSON
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+        
+        # Attempt B: Python Dictionary (Single quotes)
+        try:
+            # ast.literal_eval safely evaluates a string containing a Python literal
+            return ast.literal_eval(candidate)
+        except (ValueError, SyntaxError):
+            pass
 
     return None
-
 
 # -----------------------------
 # 1) CLOUD AGENTS
@@ -85,11 +79,10 @@ def call_vision_agent(case_id: str) -> AgentReport:
         )
 
     try:
-        if not API_URL:
-            raise ValueError("API_URL is missing in .env")
+        if not API_URL: raise ValueError("API_URL is missing in .env")
 
-        # Keep client sending <image>; Colab server translates to <start_of_image> now
-        params = {"prompt": "<image>\nDescribe the chest X-ray findings briefly."}
+        # The backend now handles the "Ghost Image" logic, so we just send the prompt.
+        params = {"prompt": "Describe the chest X-ray findings briefly."}
 
         with open(image_path, "rb") as f:
             response = requests.post(
@@ -103,13 +96,7 @@ def call_vision_agent(case_id: str) -> AgentReport:
             return AgentReport(
                 agent_name="imaging",
                 model="Error",
-                claims=[
-                    Claim(
-                        label="error",
-                        value=f"Server Error: {response.text}",
-                        confidence=0.0,
-                    )
-                ],
+                claims=[Claim(label="error", value=f"Server Error: {response.text}", confidence=0.0)],
             )
 
         finding = response.json().get("finding", "No finding")
@@ -137,82 +124,74 @@ def call_audio_agent(case_id: str) -> AgentReport:
         )
 
     try:
-        if not API_URL:
-            raise ValueError("API_URL is missing in .env")
+        if not API_URL: raise ValueError("API_URL is missing in .env")
 
         with open(audio_path, "rb") as f:
             response = requests.post(f"{API_URL}/agent/audio", files={"file": f}, timeout=60)
+        
+        if response.status_code != 200:
+             return AgentReport(agent_name="acoustics", model="Error", claims=[Claim(label="error", value=f"Server Error: {response.text}", confidence=0.0)])
 
         data = response.json()
+        
+        # Clamp confidence to be safe
+        raw_conf = float(data.get("confidence", 0.0))
+        clamped_conf = max(0.0, min(1.0, raw_conf))
+        
         return AgentReport(
             agent_name="acoustics",
             model="HeAR (Cloud)",
-            claims=[
-                Claim(
-                    label="classification",
-                    value=data.get("prediction", "unknown"),
-                    confidence=float(data.get("confidence", 0.0)),
-                )
-            ],
+            claims=[Claim(label="classification", value=data.get("prediction", "unknown"), confidence=clamped_conf)]
         )
     except Exception as e:
-        return AgentReport(
-            agent_name="acoustics",
-            model="Offline",
-            claims=[Claim(label="error", value=f"Connection Error: {str(e)}", confidence=0.0)],
-        )
+        return AgentReport(agent_name="acoustics", model="Offline", claims=[Claim(label="error", value=f"Connection Error: {str(e)}", confidence=0.0)])
 
 
 # -----------------------------
-# 2) CLOUD CONSENSUS (NO RAW IN UI)
+# 2) CLOUD CONSENSUS
 # -----------------------------
 def call_cloud_consensus(imaging_txt: str, audio_txt: str, history_txt: str):
-    """
-    Calls Colab /agent/consensus and returns clean:
-      score (float), reasoning (str), recommendation (str)
-
-    This function NEVER returns the raw LLM dump to the UI.
-    It tries:
-      1) {"parsed": {...}} response (preferred)
-      2) extract JSON from "raw_response" string (legacy)
-      3) fallback clean message
-    """
     print("⚖️ Sending Debate to Cloud Moderator...")
     payload = {"imaging_text": imaging_txt, "audio_text": audio_txt, "history_text": history_txt}
 
     try:
-        if not API_URL:
-            raise ValueError("API_URL missing")
+        if not API_URL: raise ValueError("API_URL missing")
 
         response = requests.post(f"{API_URL}/agent/consensus", json=payload, timeout=60)
         response.raise_for_status()
         data = response.json() if response.content else {}
 
-        # Preferred: server returns parsed JSON
+        # 1. Preferred: Server parsed it
         if isinstance(data, dict) and isinstance(data.get("parsed"), dict):
             parsed = data["parsed"]
-            score = float(parsed.get("score", 0.5))
-            reasoning = str(parsed.get("reasoning", "No reasoning provided."))
-            recommendation = str(parsed.get("recommendation", "Manual review"))
-            return score, reasoning, recommendation
+            return (
+                float(parsed.get("score", 0.5)),
+                str(parsed.get("reasoning", "No reasoning")),
+                str(parsed.get("recommendation", "Manual review"))
+            )
 
-        # Legacy: server returns raw_response containing JSON somewhere
-        raw_json_str = data.get("raw_response", "") if isinstance(data, dict) else ""
-        print(f"🕵️ RAW LLM OUTPUT (truncated): {raw_json_str[:500]}")
+        # 2. Legacy: Extract from raw text string
+        raw_str = data.get("raw_response", "")
+        
+        # DEBUG: Print exact output to terminal so we can see what's wrong
+        print(f"🕵️ RAW LLM OUTPUT: {raw_str}") 
 
-        obj = _extract_first_valid_json_object(raw_json_str)
+        obj = _extract_first_valid_json_object(raw_str)
+        
         if isinstance(obj, dict) and "score" in obj:
-            score = float(obj.get("score", 0.5))
-            reasoning = str(obj.get("reasoning", "No reasoning provided."))
-            recommendation = str(obj.get("recommendation", "Manual review"))
-            return score, reasoning, recommendation
+            return (
+                float(obj.get("score", 0.5)),
+                str(obj.get("reasoning", "No reasoning")),
+                str(obj.get("recommendation", "Manual review"))
+            )
 
-        print("❌ Could not extract valid JSON from moderator output.")
-        return 0.5, "Moderator output was not valid JSON. Please retry.", "Manual review"
+        # 3. Last Resort: Show the raw text in the UI so you can read it
+        error_msg = f"Valid JSON not found. Raw output: {raw_str[:100]}..."
+        return 0.5, error_msg, "Check Raw Output Tab"
 
     except Exception as e:
         print(f"❌ Consensus Failed: {e}")
-        return 0.5, f"Consensus connection error: {e}", "Manual check"
+        return 0.5, f"Consensus Error: {e}", "Manual check"
 
 
 # -----------------------------
@@ -225,26 +204,25 @@ def run_case(case: CaseInput):
     acoustics = call_audio_agent(case.case_id)
     history = history_stub(case.clinical_note_text)
 
-    # Extract text for the Moderator
-    img_txt = imaging.claims[0].value if imaging.claims else "No Image Data"
-    aud_txt = acoustics.claims[0].value if acoustics.claims else "No Audio Data"
+    # Extract text
+    img_txt = imaging.claims[0].value if imaging.claims else "No Data"
+    aud_txt = acoustics.claims[0].value if acoustics.claims else "No Data"
     hist_txt = case.clinical_note_text
 
-    # B. Moderator Verdict (Cloud)
+    # B. Verdict
     score, reasoning, recommendation = call_cloud_consensus(img_txt, aud_txt, hist_txt)
 
     level = "high" if score > 0.7 else ("medium" if score > 0.4 else "low")
-
-    # Clean summary for UI (no raw dumps)
-    summary_text = f"{reasoning} (Recommendation: {recommendation})"
-    final_reasoning = [reasoning, f"Recommendation: {recommendation}"]
+    
+    # If reasoning contains "Valid JSON not found", the summary will show the error
+    summary = f"{reasoning}"
 
     return ConsensusOutput(
         case_id=case.case_id,
-        discrepancy_alert=DiscrepancyAlert(level=level, score=score, summary=summary_text),
+        discrepancy_alert=DiscrepancyAlert(level=level, score=score, summary=summary),
         key_contradictions=[],
         recommended_data_actions=[recommendation],
-        reasoning_trace=final_reasoning,
-        limitations=["Full Cloud Architecture (MedGemma + HeAR)"],
+        reasoning_trace=[reasoning, f"Next Step: {recommendation}"],
+        limitations=["Hybrid Architecture"],
         agent_reports=[imaging, acoustics, history],
     )
