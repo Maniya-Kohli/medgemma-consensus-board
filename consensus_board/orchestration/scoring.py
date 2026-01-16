@@ -1,82 +1,95 @@
 import os
 import json
-from huggingface_hub import InferenceClient
+import requests  # <--- Changed from huggingface_hub
 from consensus_board.schemas.contracts import AgentReport
 from dotenv import load_dotenv
 
-# Force load the .env file
 load_dotenv() 
 
-# Using Gemma 2 (9B) as the "Consensus Agent"
-REPO_ID = "google/gemma-2-9b-it"
+# OLLAMA CONFIGURATION (Local)
+OLLAMA_URL = "http://localhost:11434/api/chat"
+MODEL_NAME = "gemma2:9b"  # Make sure you ran 'ollama pull gemma2:9b'
 
 def compute_discrepancy_score(reports: list[AgentReport]) -> tuple[float, list[str]]:
     """
-    Sends the agent reports to an LLM to determine if there is a discrepancy.
-    Uses Chat Completion API.
+    Orchestrates a clinical debate using LOCAL Gemma 2.
     """
-    client = InferenceClient(token=os.getenv("HF_TOKEN"))
-
-    # 1. Prepare the input for the LLM
-    agent_text = ""
+    
+    # 1. Extract Rich Context (Same as before)
+    imaging_desc = "No imaging available."
+    imaging_conf = 0.0
+    
     for r in reports:
-        claim_str = "No claim"
-        if r.claims:
-            claim_str = f"{r.claims[0].value} (Confidence: {r.claims[0].confidence})"
-        
-        agent_text += f"- Specialist '{r.agent_name}': {claim_str}\n"
-        if r.uncertainties:
-            agent_text += f"  - Notes/Uncertainties: {', '.join(r.uncertainties)}\n"
+        if r.agent_name == "imaging":
+            if hasattr(r, "visual_description") and r.visual_description:
+                 imaging_desc = r.visual_description
+            elif r.claims:
+                 imaging_desc = r.claims[0].value
+            if r.claims:
+                imaging_conf = r.claims[0].confidence
 
-    # 2. Define the Messages (Chat Format)
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are the 'Consensus Moderator', a senior medical AI. "
-                "Your task is to review reports from three specialists: Imaging, Acoustics, and History. "
-                "Determine if there is a meaningful clinical discrepancy between them.\n"
-                "Rules:\n"
-                "- If Imaging says 'Stable' but History/Acoustics show 'Worsening', this is a HIGH discrepancy.\n"
-                "- Output ONLY valid JSON in this format: "
-                "{ \"score\": <float 0.0 to 1.0>, \"reasoning\": \"<short explanation>\" }"
-            )
-        },
-        {
-            "role": "user",
-            "content": f"Here are the reports:\n{agent_text}\n\nAnalyze for discrepancies."
-        }
-    ]
+    history_report = next((r for r in reports if r.agent_name == "history"), None)
+    history_text = "No history provided."
+    if history_report and history_report.claims:
+        history_text = ", ".join([f"{c.value}" for c in history_report.claims])
+
+    audio_report = next((r for r in reports if r.agent_name == "acoustics"), None)
+    audio_text = "No audio analysis."
+    if audio_report and audio_report.claims:
+        audio_text = f"{audio_report.claims[0].value} (Confidence: {audio_report.claims[0].confidence})"
+
+    # 2. Construct Prompt (Same as before)
+    system_prompt = """
+    You are the 'MedGemma Consensus Agent'.
+    Review raw data signals. Identify "Hidden Discrepancies".
+    
+    Output purely valid JSON:
+    {
+        "clinical_reasoning": "A 2-3 sentence explanation.",
+        "discrepancy_score": <float between 0.0 and 1.0>,
+        "recommendation": "One specific action."
+    }
+    """
+
+    user_prompt = f"""
+    [VISUAL]: "{imaging_desc}" (Conf: {imaging_conf})
+    [AUDIO]: "{audio_text}"
+    [HISTORY]: "{history_text}"
+    
+    Analyze consistency. Return JSON.
+    """
 
     try:
-        # 3. Call the Chat API
-        response = client.chat_completion(
-            messages=messages,
-            max_tokens=500,
-            model=REPO_ID
-        )
+        # 3. Call OLLAMA (Local)
+        payload = {
+            "model": MODEL_NAME,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "stream": False,
+            "format": "json"  # Ollama supports forced JSON mode!
+        }
         
-        # 4. Extract the content
-        # The response object structure is slightly different for chat
-        content = response.choices[0].message.content
+        response = requests.post(OLLAMA_URL, json=payload)
+        response.raise_for_status()
         
-        # 5. Clean and Parse the JSON output
-        json_str = content.strip()
-        # Attempt to strip markdown code blocks if present
-        if "```json" in json_str:
-            json_str = json_str.split("```json")[1].split("```")[0]
-        elif "```" in json_str:
-             json_str = json_str.split("```")[1]
-            
-        data = json.loads(json_str)
-        return data.get("score", 0.0), data.get("reasoning", "No reasoning provided.")
+        # 4. Parse Response
+        # Ollama returns the JSON object directly in 'message' -> 'content'
+        content = response.json()['message']['content']
+        data = json.loads(content)
+        
+        score = data.get("discrepancy_score", 0.5)
+        reasoning = data.get("clinical_reasoning", "Analysis complete.")
+        recommendation = data.get("recommendation", "Review required.")
+        
+        return score, [reasoning, f"Recommendation: {recommendation}"]
         
     except Exception as e:
-        print(f"LLM Error: {e}")
-        # Fallback to a safe default if the API fails
-        return 0.5, ["Error calling Consensus Agent. Manual review required."]
+        print(f"❌ Local Inference Error: {e}")
+        return 0.5, [f"Error connecting to Local MedGemma: {e}"]
 
 def score_to_level(score: float) -> str:
-    if score > 0.7: return "high"
+    if score > 0.75: return "high"
     if score > 0.4: return "medium"
     return "low"
