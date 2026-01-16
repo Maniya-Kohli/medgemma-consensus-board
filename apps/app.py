@@ -16,8 +16,8 @@ API_URL = "http://127.0.0.1:8000"
 CASES_DIR = Path("data/cases")
 
 st.set_page_config(
-    page_title="MedGemma – Clinical AI Consensus",
-    page_icon="🧬",
+    page_title="Aegis Clinical – AI Safety Net",
+    page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -217,8 +217,7 @@ def ask_medgemma_live(context_json: dict, user_question: str) -> str:
 # SIDEBAR
 # ────────────────────────────────────────────────
 with st.sidebar:
-    st.title("🧬 MedGemma")
-    st.caption("Clinical AI Consensus")
+    st.title("🛡️ Aegis Clinical")
 
     if not CASES_DIR.exists():
         st.error("❌ data/cases folder missing.")

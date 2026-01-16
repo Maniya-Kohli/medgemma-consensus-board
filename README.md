@@ -1,4 +1,19 @@
-# 🧬 MedGemma Consensus Board
+# 🛡️ Aegis Clinical: Multimodal AI Consensus
+
+## 🚨 The Problem: "Siloed Signals"
+
+In high-pressure clinical environments, **burnout causes blindness**. A fatigued clinician might see a "Stable" Chest X-ray and discharge a patient, missing a subtle "Wheeze" in lung audio or a "Weight Loss" note buried in history.
+
+**Medical errors are the 3rd leading cause of death.** Many of these occur due to data disconnects—where critical signals are trapped in different silos.
+
+## 🛡️ Why "Aegis Clinical"?
+
+Named after the legendary shield of protection, **Aegis Clinical** acts as an automated "Safety Net" for healthcare providers. It serves as a clinical safeguard, employing specialized AI Agents to monitor distinct data streams (Vision, Audio, Text) and using a **Consensus Agent (MedGemma)** to shield patients from errors by detecting contradictions in real-time.
+
+## 💡 The Solution: Agentic Consensus
+
+- **If all agents agree:** The dashboard shows Green (Low Risk).
+- **If agents conflict (e.g., Vision says Healthy vs. Audio says Sick):** Aegis triggers a **RED ALERT**, forcing a critical "Second Look" before discharge.
 
 ### Hybrid Multimodal AI for Clinical Discrepancy Detection
 
