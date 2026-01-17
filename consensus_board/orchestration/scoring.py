@@ -8,86 +8,83 @@ load_dotenv()
 
 # OLLAMA CONFIGURATION (Local)
 OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL_NAME = "gemma2:9b"  # Make sure you ran 'ollama pull gemma2:9b'
+MODEL_NAME = "gemma2:2b"  # Make sure you ran 'ollama pull gemma2:9b'
+import os
+import json
+import requests
+from consensus_board.schemas.contracts import AgentReport
+from dotenv import load_dotenv
+
+load_dotenv()
+
+OLLAMA_URL = "http://localhost:11434/api/chat"
+MODEL_NAME = "gemma2:9b"  # Or your MedGemma-4B local instance
 
 def compute_discrepancy_score(reports: list[AgentReport]) -> tuple[float, list[str]]:
     """
-    Orchestrates a clinical debate using LOCAL Gemma 2.
+    Orchestrates a clinical debate using Chain-of-Thought reasoning.
     """
-    
-    # 1. Extract Rich Context (Same as before)
-    imaging_desc = "No imaging available."
-    imaging_conf = 0.0
-    
-    for r in reports:
-        if r.agent_name == "imaging":
-            if hasattr(r, "visual_description") and r.visual_description:
-                 imaging_desc = r.visual_description
-            elif r.claims:
-                 imaging_desc = r.claims[0].value
-            if r.claims:
-                imaging_conf = r.claims[0].confidence
+    # 1. Prepare Data for the Brain
+    imaging = next((r for r in reports if r.agent_name == "imaging"), None)
+    history = next((r for r in reports if r.agent_name == "history"), None)
+    audio = next((r for r in reports if r.agent_name == "acoustics"), None)
 
-    history_report = next((r for r in reports if r.agent_name == "history"), None)
-    history_text = "No history provided."
-    if history_report and history_report.claims:
-        history_text = ", ".join([f"{c.value}" for c in history_report.claims])
+    context_str = f"""
+    [AGENT: RADIOLOGIST (Vision)]
+    Finding: {imaging.claims[0].value if imaging and imaging.claims else "No Data"}
+    Confidence: {imaging.claims[0].confidence if imaging and imaging.claims else 0.0}
 
-    audio_report = next((r for r in reports if r.agent_name == "acoustics"), None)
-    audio_text = "No audio analysis."
-    if audio_report and audio_report.claims:
-        audio_text = f"{audio_report.claims[0].value} (Confidence: {audio_report.claims[0].confidence})"
+    [AGENT: ACOUSTICIAN (Audio)]
+    Finding: {audio.claims[0].value if audio and audio.claims else "No Data"}
+    Confidence: {audio.claims[0].confidence if audio and audio.claims else 0.0}
 
-    # 2. Construct Prompt (Same as before)
+    [AGENT: HISTORIAN (Clinical Notes)]
+    Patient Claims: {", ".join([c.value for c in history.claims]) if history and history.claims else "No Data"}
+    """
+
+    # 2. The "Medical Consultant" Prompt
     system_prompt = """
-    You are the 'MedGemma Consensus Agent'.
-    Review raw data signals. Identify "Hidden Discrepancies".
+    You are the 'Chief Medical Consensus Officer'. Your goal is to catch life-threatening mismatches.
     
-    Output purely valid JSON:
+    CLINICAL LOGIC RULES:
+    1. If Audio finds 'Crackles/Wheeze' but Imaging is 'Stable', this is a HIGH DISCREPANCY (possible early pneumonia/CHF).
+    2. If History mentions 'Weight Loss' but Imaging is 'Stable', flag for further cancer screening.
+    3. Low confidence signals should be weighted less unless they are life-threatening.
+
+    OUTPUT FORMAT: You must return valid JSON.
     {
-        "clinical_reasoning": "A 2-3 sentence explanation.",
-        "discrepancy_score": <float between 0.0 and 1.0>,
-        "recommendation": "One specific action."
+        "thought_process": "Briefly explain the conflict between signals.",
+        "discrepancy_score": <0.0 to 1.0>,
+        "key_conflict": "The specific mismatch (e.g. History says sick, X-ray says healthy).",
+        "action": "Immediate medical recommendation."
     }
     """
 
-    user_prompt = f"""
-    [VISUAL]: "{imaging_desc}" (Conf: {imaging_conf})
-    [AUDIO]: "{audio_text}"
-    [HISTORY]: "{history_text}"
-    
-    Analyze consistency. Return JSON.
-    """
-
     try:
-        # 3. Call OLLAMA (Local)
         payload = {
             "model": MODEL_NAME,
             "messages": [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
+                {"role": "user", "content": f"Review these agent reports:\n{context_str}"}
             ],
             "stream": False,
-            "format": "json"  # Ollama supports forced JSON mode!
+            "format": "json"
         }
         
-        response = requests.post(OLLAMA_URL, json=payload)
+        response = requests.post(OLLAMA_URL, json=payload, timeout=30)
         response.raise_for_status()
         
-        # 4. Parse Response
-        # Ollama returns the JSON object directly in 'message' -> 'content'
-        content = response.json()['message']['content']
-        data = json.loads(content)
+        data = json.loads(response.json()['message']['content'])
         
         score = data.get("discrepancy_score", 0.5)
-        reasoning = data.get("clinical_reasoning", "Analysis complete.")
-        recommendation = data.get("recommendation", "Review required.")
+        reasoning = f"🤔 Logic: {data.get('thought_process')}"
+        conflict = f"⚠️ Conflict: {data.get('key_conflict')}"
+        recommendation = data.get("action", "Manual Review Required.")
         
-        return score, [reasoning, f"Recommendation: {recommendation}"]
+        return score, [reasoning, conflict, f"Action: {recommendation}"]
         
     except Exception as e:
-        print(f"❌ Local Inference Error: {e}")
-        return 0.5, [f"Error connecting to Local MedGemma: {e}"]
+        return 0.5, [f"Consensus Error: {e}"]
 
 def score_to_level(score: float) -> str:
     if score > 0.75: return "high"

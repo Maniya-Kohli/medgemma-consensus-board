@@ -36,21 +36,3 @@ def acoustics_stub() -> AgentReport:
         requested_data=["Repeat recording in quiet environment (10–15s)."],
     )
 
-
-def history_stub(note_text: str) -> AgentReport:
-    # Minimal “extraction” stub: just pretend we found a signal.
-    return AgentReport(
-        agent_name="history",
-        model="MedGemma (stub)",
-        claims=[
-            Claim(
-                label="weight_loss",
-                value="10lb_4wks",
-                confidence=0.92,
-                evidence=[EvidenceRef(type="note_span", id="note_span_1", value="10lb weight loss over 4 weeks")],
-            )
-        ],
-        quality_flags=[],
-        uncertainties=["No vitals trend provided."],
-        requested_data=["SpO2 trend", "temperature trend"],
-    )
