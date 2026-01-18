@@ -62,7 +62,8 @@ import json
 def extract_history_with_medgemma(note_text: str) -> AgentReport:
     """
     Translates messy notes into a structured profile. 
-    Deduplicates clinical tags to prevent '[ACTIVE] [ACTIVE]' errors in UI.
+    If extraction fails, it flags for manual review with 0.0 confidence 
+    to avoid misleading the consensus engine.
     """
     try:
         response = ollama.chat(
@@ -73,6 +74,7 @@ def extract_history_with_medgemma(note_text: str) -> AgentReport:
                     'content': (
                         "You are a Clinical Data Extractor. Extract findings into: "
                         "[ACTIVE], [BASELINE], [RISK], [NEGATION]. \n"
+                        "Search specifically for symptoms (e.g., weight loss, fever, cough). "
                         "Format: '[CATEGORY] Finding'. Example: ['[ACTIVE] 102F fever']"
                     )
                 },
@@ -89,7 +91,6 @@ def extract_history_with_medgemma(note_text: str) -> AgentReport:
             findings = raw_data
         elif isinstance(raw_data, dict):
             for cat, val in raw_data.items():
-                # If value is already a list, extend, else append
                 if isinstance(val, list):
                     for v in val: findings.append(f"[{cat.upper()}] {v}")
                 else:
@@ -101,37 +102,44 @@ def extract_history_with_medgemma(note_text: str) -> AgentReport:
         
         for f in findings:
             f_str = str(f).strip()
-            # If the model didn't include a tag, we find the first valid one 
-            # or skip it if it's generic 'symptoms'
             if any(f_str.startswith(p) for p in valid_prefixes):
-                # DEDUPLICATE: If it says '[ACTIVE] [ACTIVE]', strip the first one
                 for p in valid_prefixes:
                     double_p = f"{p} {p}"
                     if f_str.startswith(double_p):
                         f_str = f_str.replace(double_p, p, 1)
                 
-                # Only add if it has actual content beyond just the tag
                 if len(f_str) > 10:
                     final_claims.append(f_str)
 
+        # 3. THE FIX: REMOVE SILENT FALSE NEGATIVE
+        # Instead of defaulting to "Healthy", we signal that data is missing.
         if not final_claims:
             return AgentReport(
                 agent_name="history",
                 model="OpenBioLLM-8B (Local)",
-                claims=[Claim(label="finding", value="[BASELINE] Healthy/Asymptomatic", confidence=0.99)]
+                claims=[
+                    Claim(
+                        label="extraction_status", 
+                        value="[SYSTEM] Manual History Review Required - No findings extracted.", 
+                        confidence=0.0  # Zero confidence tells the Brain to ignore this signal
+                    )
+                ],
+                uncertainties=["Local extraction failed to identify clinical entities in note."]
             )
 
-        # 3. CREATE REPORT WITH CORRECT MODEL NAME
         return AgentReport(
             agent_name="history",
-            model="OpenBioLLM-8B (Local)", # Update metadata name
+            model="OpenBioLLM-8B (Local)",
             claims=[Claim(label="finding", value=f, confidence=0.9) for f in final_claims]
         )
         
     except Exception as e:
-        print(f"Extraction Error: {e}")
-        return AgentReport(agent_name="history", model="Error", claims=[])
-    
+        # Ensure error fallbacks also use 0.0 confidence
+        return AgentReport(
+            agent_name="history", 
+            model="Error", 
+            claims=[Claim(label="error", value=f"Service Offline: {str(e)}", confidence=0.0)]
+        )
 # -----------------------------
 # 2) CLOUD AGENTS (MedGemma 4B / HeAR)
 # -----------------------------
@@ -205,50 +213,59 @@ def call_audio_agent(case_id: str) -> AgentReport:
 # -----------------------------
 # 3) CLOUD CONSENSUS
 # -----------------------------
+# apps/api/main.py
+
+# apps/api/main.py
+
 def call_cloud_consensus(imaging_txt: str, audio_txt: str, history_txt: str):
     payload = {"imaging_text": imaging_txt, "audio_text": audio_txt, "history_text": history_txt}
     try:
-        response = requests.post(f"{API_URL}/agent/consensus", json=payload, timeout=120)
+        response = requests.post(f"{API_URL}/agent/consensus", json=payload, timeout=300)
         data = response.json()
-
-        # Check if "parsed" exists and is not None
-        parsed = data.get("parsed")
-        if isinstance(parsed, dict):
-            # We use .get() with a more descriptive fallback than N/A
+        
+        parsed = data.get("parsed", {})
+        audit_md = data.get("audit_markdown", "Audit report unavailable.")
+        # Key Alignment: Match the Cloud API's return
+        thought_process = data.get("thought_process", "Reasoning not captured.")
+        
+        # Robust score extraction
+        try:
             score = float(parsed.get("score", 0.5))
-            reasoning = parsed.get("reasoning") or "Clinical signals are being reconciled."
-            rec = parsed.get("recommendation") or "Manual clinical correlation required."
-            return score, str(reasoning), str(rec)
-
-        return 0.5, "Could not parse clinical reasoning.", "Manual Review"
+        except:
+            score = 0.5
+            
+        reasoning = parsed.get("reasoning", "Signals reconciled.")
+        rec = parsed.get("recommendation", "Manual correlation required.")
+        
+        return score, reasoning, rec, audit_md, thought_process
+    
     except Exception as e:
-        return 0.5, f"Consensus Timeout: {e}", "Check Cloud Connection"
+        return 0.5, f"Consensus Error: {e}", "Check Logs", f"System Error: {str(e)}", ""
 
 # -----------------------------
 # 4) MAIN FLOW
 # -----------------------------
 @app.post("/run", response_model=ConsensusOutput)
 def run_case(case: CaseInput):
-    # A. Multimodal Intelligence Gathering
     imaging = call_vision_agent(case.case_id, case.clinical_note_text)
     acoustics = call_audio_agent(case.case_id)
     history = extract_history_with_medgemma(case.clinical_note_text)
 
-    # B. Verdict Generation
     img_txt = imaging.claims[0].value if imaging.claims else "No Data"
     aud_txt = acoustics.claims[0].value if acoustics.claims else "No Data"
     hist_txt = ", ".join([c.value for c in history.claims])
 
-    score, reasoning, recommendation = call_cloud_consensus(img_txt, aud_txt, hist_txt)
+    # UPDATED: Now receives 4 values
+    score, reasoning, recommendation, audit_markdown, thought_process = call_cloud_consensus(img_txt, aud_txt, hist_txt)
 
     level = "high" if score > 0.7 else ("medium" if score > 0.4 else "low")
     
-    return ConsensusOutput(
-        case_id=case.case_id,
-        discrepancy_alert=DiscrepancyAlert(level=level, score=score, summary=reasoning),
-        key_contradictions=[],
-        recommended_data_actions=[recommendation],
-        reasoning_trace=[reasoning, f"Recommendation: {recommendation}"],
-        limitations=["Hybrid Architecture"],
-        agent_reports=[imaging, acoustics, history],
-    )
+    return {
+        "case_id": case.case_id,
+        "discrepancy_alert": {"level": level, "score": score, "summary": reasoning},
+        "recommended_data_actions": [recommendation],
+        "reasoning_trace": [reasoning, f"Recommendation: {recommendation}", f"Audit: {audit_markdown[:100]}..."],
+        "agent_reports": [imaging, acoustics, history],
+        "audit_markdown": audit_markdown,
+        "thought_process": thought_process 
+    }

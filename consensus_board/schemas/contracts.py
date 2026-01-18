@@ -57,3 +57,6 @@ class ConsensusOutput(BaseModel):
     reasoning_trace: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     agent_reports: list[AgentReport]
+    audit_markdown: Optional[str] = None
+    thought_process : Optional[str] = None
+    
