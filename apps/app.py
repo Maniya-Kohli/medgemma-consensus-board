@@ -296,9 +296,6 @@ if out:
                 if aud_agent: st.write(f"**{aud_agent['claims'][0]['value']}** (Conf: {aud_agent['claims'][0]['confidence']:.2f})")
 
 
-        # apps/app.py - Update tab_audit
-        # --- Updated app.py (Streamlit UI) ---
-
         with tab_audit:
             full_audit = out.get("audit_markdown")
             # This now matches the key from main.py

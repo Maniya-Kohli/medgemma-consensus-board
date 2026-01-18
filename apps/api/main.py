@@ -217,22 +217,67 @@ def call_audio_agent(case_id: str) -> AgentReport:
 
 # apps/api/main.py
 
-def call_cloud_consensus(imaging_txt: str, audio_txt: str, history_txt: str):
-    payload = {"imaging_text": imaging_txt, "audio_text": audio_txt, "history_text": history_txt}
+# def call_cloud_consensus(imaging_txt: str, audio_txt: str, history_txt: str):
+#     payload = {"imaging_text": imaging_txt, "audio_text": audio_txt, "history_text": history_txt}
+#     try:
+#         response = requests.post(f"{API_URL}/agent/consensus", json=payload, timeout=300)
+#         data = response.json()
+        
+#         parsed = data.get("parsed", {})
+#         audit_md = data.get("audit_markdown", "Audit report unavailable.")
+#         # Key Alignment: Match the Cloud API's return
+#         thought_process = data.get("thought_process", "Reasoning not captured.")
+        
+#         # Robust score extraction
+#         try:
+#             score = float(parsed.get("score", 0.5))
+#         except:
+#             score = 0.5
+            
+#         reasoning = parsed.get("reasoning", "Signals reconciled.")
+#         rec = parsed.get("recommendation", "Manual correlation required.")
+        
+#         return score, reasoning, rec, audit_md, thought_process
+    
+#     except Exception as e:
+#         return 0.5, f"Consensus Error: {e}", "Check Logs", f"System Error: {str(e)}", ""
+
+# -----------------------------
+# 3) UPDATED CLOUD CONSENSUS (main.py)
+# -----------------------------
+
+def call_cloud_consensus(case_id: str, imaging_txt: str, audio_txt: str, history_txt: str):
+    image_path = f"artifacts/runs/{case_id}/xray.jpg"
+    
+    if not os.path.exists(image_path):
+        return 0.5, "Image Missing", "Verify path", "X-ray not found.", ""
+
     try:
-        response = requests.post(f"{API_URL}/agent/consensus", json=payload, timeout=300)
-        data = response.json()
+        with open(image_path, "rb") as f:
+            # Files dictionary handles binary data
+            files = {"image": ("xray.jpg", f, "image/jpeg")}
+            # Data dictionary handles the Form fields
+            data = {
+                "imaging_text": imaging_txt,
+                "audio_text": audio_txt,
+                "history_text": history_txt
+            }
+            
+            response = requests.post(
+                f"{API_URL}/agent/consensus", 
+                files=files, 
+                data=data, 
+                timeout=300
+            )
+            
+            
+        data_json = response.json()
+        parsed = data_json.get("parsed", {})
+        audit_md = data_json.get("audit_markdown", "Audit report unavailable.")
+        thought_process = data_json.get("thought_process", "Reasoning not captured.")
         
-        parsed = data.get("parsed", {})
-        audit_md = data.get("audit_markdown", "Audit report unavailable.")
-        # Key Alignment: Match the Cloud API's return
-        thought_process = data.get("thought_process", "Reasoning not captured.")
-        
-        # Robust score extraction
-        try:
-            score = float(parsed.get("score", 0.5))
-        except:
-            score = 0.5
+        try: score = float(parsed.get("score", 0.5))
+        except: score = 0.5
             
         reasoning = parsed.get("reasoning", "Signals reconciled.")
         rec = parsed.get("recommendation", "Manual correlation required.")
@@ -247,6 +292,7 @@ def call_cloud_consensus(imaging_txt: str, audio_txt: str, history_txt: str):
 # -----------------------------
 @app.post("/run", response_model=ConsensusOutput)
 def run_case(case: CaseInput):
+    # Stage 1: Individual Agent Analysis
     imaging = call_vision_agent(case.case_id, case.clinical_note_text)
     acoustics = call_audio_agent(case.case_id)
     history = extract_history_with_medgemma(case.clinical_note_text)
@@ -255,8 +301,10 @@ def run_case(case: CaseInput):
     aud_txt = acoustics.claims[0].value if acoustics.claims else "No Data"
     hist_txt = ", ".join([c.value for c in history.claims])
 
-    # UPDATED: Now receives 4 values
-    score, reasoning, recommendation, audit_markdown, thought_process = call_cloud_consensus(img_txt, aud_txt, hist_txt)
+    # Stage 2: MULTIMODAL CONSENSUS (Now passing case_id to fetch the image)
+    score, reasoning, recommendation, audit_markdown, thought_process = call_cloud_consensus(
+        case.case_id, img_txt, aud_txt, hist_txt
+    )
 
     level = "high" if score > 0.7 else ("medium" if score > 0.4 else "low")
     
@@ -269,3 +317,28 @@ def run_case(case: CaseInput):
         "audit_markdown": audit_markdown,
         "thought_process": thought_process 
     }
+
+# @app.post("/run", response_model=ConsensusOutput)
+# def run_case(case: CaseInput):
+#     imaging = call_vision_agent(case.case_id, case.clinical_note_text)
+#     acoustics = call_audio_agent(case.case_id)
+#     history = extract_history_with_medgemma(case.clinical_note_text)
+
+#     img_txt = imaging.claims[0].value if imaging.claims else "No Data"
+#     aud_txt = acoustics.claims[0].value if acoustics.claims else "No Data"
+#     hist_txt = ", ".join([c.value for c in history.claims])
+
+#     # UPDATED: Now receives 4 values
+#     score, reasoning, recommendation, audit_markdown, thought_process = call_cloud_consensus(img_txt, aud_txt, hist_txt)
+
+#     level = "high" if score > 0.7 else ("medium" if score > 0.4 else "low")
+    
+#     return {
+#         "case_id": case.case_id,
+#         "discrepancy_alert": {"level": level, "score": score, "summary": reasoning},
+#         "recommended_data_actions": [recommendation],
+#         "reasoning_trace": [reasoning, f"Recommendation: {recommendation}", f"Audit: {audit_markdown[:100]}..."],
+#         "agent_reports": [imaging, acoustics, history],
+#         "audit_markdown": audit_markdown,
+#         "thought_process": thought_process 
+#     }
