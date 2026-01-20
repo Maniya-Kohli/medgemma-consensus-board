@@ -3,9 +3,11 @@ import json
 import re
 import ast
 import requests
-from fastapi import FastAPI
 from dotenv import load_dotenv
 import ollama
+from fastapi.middleware.cors import CORSMiddleware
+import shutil  # Added for file saving
+from fastapi import FastAPI, UploadFile, File, Form  # Added UploadFile, File, Form
 
 from consensus_board.schemas.contracts import (
     CaseInput,
@@ -20,11 +22,60 @@ load_dotenv()
 
 app = FastAPI(title="Consensus Board API", version="0.5.0 (MedGemma-Native)")
 
+# --- CORS CONFIGURATION ---
+# Define the origins that are allowed to make requests to this API
+origins = [
+    "http://localhost:3000",    # React/Next.js default port
+    "http://127.0.0.1:3000",
+    # Add any other origins (production domains) here
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,      # Or ["*"] to allow all (less secure, but okay for local dev)
+    allow_credentials=True,
+    allow_methods=["*"],        # Allows GET, POST, OPTIONS, etc.
+    allow_headers=["*"],        # Allows all headers
+)
+# --------------------------
+
 API_URL = os.getenv("API_URL")
+
+# -----------------------------
+# NEW: UPLOAD ENDPOINT
+# -----------------------------
+@app.post("/upload/{case_id}")
+async def upload_case_artifacts(
+    case_id: str, 
+    xray: UploadFile = File(None), 
+    audio: UploadFile = File(None)
+):
+    """
+    Saves uploaded files to the local disk so agents can find them.
+    Path: artifacts/runs/{case_id}/xray.jpg (or audio.wav)
+    """
+    target_dir = f"artifacts/runs/{case_id}"
+    os.makedirs(target_dir, exist_ok=True)
+
+    # Save X-Ray
+    if xray:
+        file_location = os.path.join(target_dir, "xray.jpg")
+        with open(file_location, "wb+") as file_object:
+            shutil.copyfileobj(xray.file, file_object)
+
+    # Save Audio
+    if audio:
+        file_location = os.path.join(target_dir, "audio.wav")
+        with open(file_location, "wb+") as file_object:
+            shutil.copyfileobj(audio.file, file_object)
+
+    return {"message": "Files cached successfully", "case_id": case_id}
 
 # -----------------------------
 # HELPER: ROBUST JSON PARSER
 # -----------------------------
+
+
 def _extract_first_valid_json_object(text: str):
     if not text or not isinstance(text, str):
         return None
