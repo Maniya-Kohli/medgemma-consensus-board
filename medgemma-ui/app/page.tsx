@@ -32,8 +32,8 @@ import {
 } from "lucide-react";
 
 /**
- * AEGIS CLINICAL CONSENSUS BOARD - V3.2
- * Layout refinement: Unified font styles, restored placeholder, and dynamic data matrix.
+ * AEGIS CLINICAL CONSENSUS BOARD - V3.4
+ * Layout refinement: Unified card typography, optimized Directives whitespace, and modality validation.
  */
 
 // --- Interfaces ---
@@ -175,6 +175,50 @@ export default function App() {
     setClinicalHistory("");
   }, [selectedCase, mode]);
 
+  const handleXrayChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Image Validation: Max 10MB, JPG/PNG
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Image size exceeds 10MB limit.");
+      setXrayFile(null);
+      return;
+    }
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      setError("Invalid image format. Please upload JPG or PNG.");
+      setXrayFile(null);
+      return;
+    }
+
+    setXrayFile(file);
+    setError(null);
+  };
+
+  const handleAudioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Audio Validation: Max 20MB, WAV/MP3
+    if (file.size > 20 * 1024 * 1024) {
+      setError("Audio size exceeds 20MB limit.");
+      setAudioFile(null);
+      return;
+    }
+    if (
+      !["audio/wav", "audio/mpeg", "audio/mp3", "audio/x-wav"].includes(
+        file.type,
+      )
+    ) {
+      setError("Invalid audio format. Please upload WAV or MP3.");
+      setAudioFile(null);
+      return;
+    }
+
+    setAudioFile(file);
+    setError(null);
+  };
+
   const analyzeCase = async () => {
     setLoading(true);
     setError(null);
@@ -244,7 +288,6 @@ export default function App() {
   };
 
   const HeatmapTile = ({ value, agent, category, onClick }: any) => {
-    // Dynamic color based on confidence level
     const getBgColor = (val: number) => {
       if (val > 0.8) return "bg-blue-600";
       if (val > 0.6) return "bg-blue-500";
@@ -269,7 +312,6 @@ export default function App() {
   const ConfidenceHeatmap = () => {
     const categories = ["Consolidation", "Effusion", "Airway", "Risk Factor"];
 
-    // Map agent reports to the heatmap matrix using provided logic
     const matrix = analysisResult?.agent_reports.map((agent) => {
       return categories.map((cat) => {
         const specificClaim = agent.claims.find(
@@ -604,40 +646,52 @@ export default function App() {
                     Modalities
                   </label>
                   <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => xrayInputRef.current?.click()}
-                      className={`flex flex-col items-center justify-center gap-1.5 bg-[#1a212d] border rounded-lg p-2.5 text-[10px] transition-all ${xrayFile ? "border-blue-500 bg-blue-500/5" : "border-[#2a3441] hover:border-blue-500/50"}`}
-                    >
-                      <ImageIcon
-                        className={`w-3.5 h-3.5 ${xrayFile ? "text-blue-400" : "text-slate-500"}`}
-                      />
-                      <span className="truncate w-full text-center font-bold uppercase">
-                        {xrayFile ? "READY" : "X-RAY"}
+                    <div className="flex flex-col gap-1 w-full">
+                      <button
+                        onClick={() => xrayInputRef.current?.click()}
+                        className={`flex flex-col items-center justify-center gap-1.5 bg-[#1a212d] border rounded-lg p-2.5 text-[10px] transition-all ${xrayFile ? "border-blue-500 bg-blue-500/5" : "border-[#2a3441] hover:border-blue-500/50"}`}
+                      >
+                        <ImageIcon
+                          className={`w-3.5 h-3.5 ${xrayFile ? "text-blue-400" : "text-slate-500"}`}
+                        />
+                        <span className="truncate w-full text-center font-bold uppercase">
+                          {xrayFile ? "READY" : "X-RAY"}
+                        </span>
+                      </button>
+                      <span className="text-[8px] text-center text-slate-600 font-bold uppercase tracking-tighter">
+                        Max 10MB, JPG/PNG
                       </span>
-                    </button>
-                    <button
-                      onClick={() => audioInputRef.current?.click()}
-                      className={`flex flex-col items-center justify-center gap-1.5 bg-[#1a212d] border rounded-lg p-2.5 text-[10px] transition-all ${audioFile ? "border-emerald-500 bg-emerald-500/5" : "border-[#2a3441] hover:border-emerald-500/50"}`}
-                    >
-                      <Volume2
-                        className={`w-3.5 h-3.5 ${audioFile ? "text-emerald-400" : "text-slate-500"}`}
-                      />
-                      <span className="truncate w-full text-center font-bold uppercase">
-                        {audioFile ? "READY" : "AUDIO"}
+                    </div>
+                    <div className="flex flex-col gap-1 w-full">
+                      <button
+                        onClick={() => audioInputRef.current?.click()}
+                        className={`flex flex-col items-center justify-center gap-1.5 bg-[#1a212d] border rounded-lg p-2.5 text-[10px] transition-all ${audioFile ? "border-emerald-500 bg-emerald-500/5" : "border-[#2a3441] hover:border-emerald-500/50"}`}
+                      >
+                        <Volume2
+                          className={`w-3.5 h-3.5 ${audioFile ? "text-emerald-400" : "text-slate-500"}`}
+                        />
+                        <span className="truncate w-full text-center font-bold uppercase">
+                          {audioFile ? "READY" : "AUDIO"}
+                        </span>
+                      </button>
+                      <span className="text-[8px] text-center text-slate-600 font-bold uppercase tracking-tighter">
+                        Max 20MB, WAV/MP3
                       </span>
-                    </button>
+                    </div>
                   </div>
                   <input
                     type="file"
                     ref={xrayInputRef}
                     className="hidden"
-                    onChange={(e) => setXrayFile(e.target.files?.[0] || null)}
+                    accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                    onChange={handleXrayChange}
                   />
                   <input
                     type="file"
                     ref={audioInputRef}
                     className="hidden"
-                    onChange={(e) => setAudioFile(e.target.files?.[0] || null)}
+                    accept=".wav,.mp3,audio/wav,audio/mpeg"
+                    onChange={handleAudioChange}
                   />
                 </div>
               )}
@@ -877,20 +931,23 @@ export default function App() {
                               </div>
                               <Maximize2 className="w-3 h-3 text-slate-600 group-hover:text-blue-500 transition-colors" />
                             </div>
-                            <div className="flex-1 space-y-2 mb-3 overflow-hidden">
+                            {/* Unified typography: matching Adjudicated Verdict text structure */}
+                            <div className="flex-1 space-y-3 mb-3 overflow-hidden">
                               {analysisResult.recommended_data_actions
-                                ?.slice(0, 3)
+                                ?.slice(0, 5)
                                 .map((action, i) => (
                                   <div
                                     key={i}
                                     className="flex gap-2 items-start"
                                   >
-                                    <div className="w-3 h-3 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                                    <div className="w-3.5 h-3.5 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5">
                                       <CheckCircle className="w-2.5 h-2.5 text-blue-500" />
                                     </div>
-                                    <p className="text-sm font-bold text-white leading-snug line-clamp-2">
-                                      {action}
-                                    </p>
+                                    <h2 className="text-sm font-bold text-white leading-relaxed">
+                                      {action.length > 85
+                                        ? action.substring(0, 85) + "..."
+                                        : action}
+                                    </h2>
                                   </div>
                                 ))}
                             </div>
