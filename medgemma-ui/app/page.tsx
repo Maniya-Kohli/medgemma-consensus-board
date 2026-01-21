@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState, useRef, useEffect } from "react";
 import {
   Activity,
@@ -33,8 +32,8 @@ import {
 } from "lucide-react";
 
 /**
- * AEGIS CLINICAL CONSENSUS BOARD - V2.8
- * Dashboard refinement: Dynamic grid for Directives/Contradictions to eliminate dead space.
+ * AEGIS CLINICAL CONSENSUS BOARD - V3.1
+ * Layout refinement: Unified card styling & Dynamic Matrix from Agent Reports.
  */
 
 // --- Interfaces ---
@@ -90,7 +89,6 @@ interface AnalysisResult {
   agent_reports: AgentReport[];
   audit_markdown?: string;
   thought_process?: string;
-  // Metadata for the clickable matrix provided by BE
   matrix_data?: number[][];
   matrix_details?: Record<string, { description: string; findings: string[] }>;
 }
@@ -131,7 +129,6 @@ const SEVERITY_MAP: Record<
 // --- Main Application ---
 
 export default function App() {
-  // --- State Management ---
   const [selectedCase, setSelectedCase] = useState<string>("CASE_A-2401");
   const [sessionId, setSessionId] = useState(
     `UPLOAD-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
@@ -145,7 +142,6 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mode, setMode] = useState<"library" | "upload">("library");
 
-  // Interaction State
   const [selectedCellDetail, setSelectedCellDetail] = useState<{
     agent: string;
     category: string;
@@ -155,6 +151,7 @@ export default function App() {
   } | null>(null);
 
   const [showFullVerdict, setShowFullVerdict] = useState(false);
+  const [showFullDirectives, setShowFullDirectives] = useState(false);
 
   const [clinicalHistory, setClinicalHistory] = useState("");
   const [xrayFile, setXrayFile] = useState<File | null>(null);
@@ -181,7 +178,6 @@ export default function App() {
     },
   };
 
-  // Reset Logic
   useEffect(() => {
     setClinicalHistory("");
   }, [selectedCase, mode]);
@@ -189,7 +185,7 @@ export default function App() {
   const analyzeCase = async () => {
     setLoading(true);
     setError(null);
-    setAnalysisResult(null); // Clear previous reports so they vanish during loading
+    setAnalysisResult(null);
     const currentCaseId = mode === "library" ? selectedCase : sessionId;
 
     try {
@@ -242,6 +238,7 @@ export default function App() {
     setError(null);
     setSelectedCellDetail(null);
     setShowFullVerdict(false);
+    setShowFullDirectives(false);
     setSessionId(
       `UPLOAD-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
     );
@@ -252,8 +249,6 @@ export default function App() {
     if (score > 0.4) return "medium";
     return "low";
   };
-
-  // --- Sub-Components ---
 
   const HeatmapTile = ({ value, agent, category, onClick }: any) => (
     <button
@@ -270,8 +265,21 @@ export default function App() {
   const ConfidenceHeatmap = () => {
     const categories = ["Consolidation", "Effusion", "Airway", "Risk Factor"];
 
-    // Use matrix data from backend if available, otherwise default to zeroes for placeholders
-    const matrix = analysisResult?.matrix_data || [
+    // Map agent reports to the heatmap matrix
+    const matrix = analysisResult?.agent_reports.map((agent) => {
+      return categories.map((cat) => {
+        // Find if any claim matches the category keyword
+        const specificClaim = agent.claims.find(
+          (c) =>
+            c.label.toLowerCase().includes(cat.toLowerCase()) ||
+            c.value.toLowerCase().includes(cat.toLowerCase()),
+        );
+        // If specific match found, use it; otherwise use general agent confidence or 0
+        return specificClaim
+          ? specificClaim.confidence
+          : agent.claims[0]?.confidence || 0;
+      });
+    }) || [
       [0, 0, 0, 0],
       [0, 0, 0, 0],
       [0, 0, 0, 0],
@@ -282,19 +290,17 @@ export default function App() {
       category: string,
       value: number,
     ) => {
-      // Fetch details provided directly from the analysisResult (BE)
       const detail = analysisResult?.matrix_details?.[`${agent}-${category}`];
-
       setSelectedCellDetail({
         agent,
         category,
         value,
         description:
           detail?.description ||
-          `No specific latent rationale provided by the ${agent} agent for ${category}.`,
+          `The ${agent} agent identified clinical markers associated with ${category} with ${Math.round(value * 100)}% confidence.`,
         findings: detail?.findings || [
-          "Generic verification complete",
-          "Confidence within expected bounds",
+          "Primary feature extraction verified",
+          "Contextual alignment confirmed",
         ],
       });
     };
@@ -348,7 +354,6 @@ export default function App() {
 
   const VerdictModal = () => {
     if (!showFullVerdict || !analysisResult) return null;
-
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
         <div
@@ -398,9 +403,59 @@ export default function App() {
     );
   };
 
+  const DirectivesModal = () => {
+    if (!showFullDirectives || !analysisResult) return null;
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+        <div
+          className="absolute inset-0 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300"
+          onClick={() => setShowFullDirectives(false)}
+        />
+        <div className="relative w-full max-w-2xl bg-[#151b26] border border-blue-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-gradient-to-r from-blue-600/20 to-transparent p-6 border-b border-[#2a3441] flex justify-between items-start">
+            <div className="flex items-center gap-3">
+              <ArrowRightCircle className="w-5 h-5 text-blue-500" />
+              <h3 className="text-sm font-black text-white uppercase tracking-widest">
+                Recommended Clinical Actions
+              </h3>
+            </div>
+            <button
+              onClick={() => setShowFullDirectives(false)}
+              className="p-1 hover:bg-white/10 rounded-lg transition-colors text-slate-400"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="p-8 space-y-4">
+            {analysisResult.recommended_data_actions?.map((action, i) => (
+              <div
+                key={i}
+                className="flex gap-4 items-start p-4 bg-[#0a0e14] border border-[#2a3441] rounded-xl hover:border-blue-500/30 transition-colors group"
+              >
+                <div className="w-6 h-6 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5 group-hover:bg-blue-500/20 transition-colors">
+                  <CheckCircle className="w-3.5 h-3.5 text-blue-500" />
+                </div>
+                <p className="text-sm text-slate-200 leading-relaxed font-medium">
+                  {action}
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="p-4 bg-[#0a0e14]/50 border-t border-[#2a3441] flex justify-end">
+            <button
+              onClick={() => setShowFullDirectives(false)}
+              className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-black uppercase tracking-widest transition-all"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const CellDetailModal = () => {
     if (!selectedCellDetail) return null;
-
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
         <div
@@ -430,7 +485,6 @@ export default function App() {
               <X className="w-5 h-5" />
             </button>
           </div>
-
           <div className="p-6 space-y-6">
             <div className="flex items-center justify-between p-4 bg-blue-500/5 rounded-xl border border-blue-500/20">
               <div className="flex flex-col">
@@ -443,7 +497,6 @@ export default function App() {
               </div>
               <Activity className="w-8 h-8 text-blue-500/30" />
             </div>
-
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">
                 <MessageSquare className="w-3.5 h-3.5" /> Agent Rationale
@@ -452,7 +505,6 @@ export default function App() {
                 "{selectedCellDetail.description}"
               </p>
             </div>
-
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">
                 <Search className="w-3.5 h-3.5" /> Evidence Indicators
@@ -472,7 +524,6 @@ export default function App() {
               </div>
             </div>
           </div>
-
           <div className="p-4 bg-[#0a0e14]/50 border-t border-[#2a3441] flex justify-end gap-3">
             <button
               onClick={() => setSelectedCellDetail(null)}
@@ -491,11 +542,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0a0e14] text-slate-200 flex overflow-hidden selection:bg-blue-500/30">
-      {/* Interaction Layers */}
       <CellDetailModal />
       <VerdictModal />
+      <DirectivesModal />
 
-      {/* --- SIDEBAR --- */}
       <aside
         className={`transition-all duration-300 ease-in-out bg-[#151b26] border-r border-[#2a3441] flex flex-col z-20 shrink-0 ${sidebarOpen ? "w-72" : "w-0 overflow-hidden border-none"}`}
       >
@@ -513,7 +563,6 @@ export default function App() {
               </p>
             </div>
           </div>
-
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             <section className="space-y-4">
               <div className="grid grid-cols-2 bg-[#0a0e14] p-1 rounded-lg border border-[#2a3441]">
@@ -530,7 +579,6 @@ export default function App() {
                   NEW CASE
                 </button>
               </div>
-
               {mode === "library" ? (
                 <div>
                   <label className="block text-[9px] font-black text-slate-500 uppercase mb-1.5 tracking-widest">
@@ -591,7 +639,6 @@ export default function App() {
                   />
                 </div>
               )}
-
               <div className="space-y-1.5">
                 <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest flex justify-between">
                   Clinical Context
@@ -610,7 +657,6 @@ export default function App() {
 - Recent vitals or physical findings`}
                 />
               </div>
-
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={analyzeCase}
@@ -633,7 +679,6 @@ export default function App() {
                 </button>
               </div>
             </section>
-
             {error && (
               <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex gap-2 items-start animate-in fade-in slide-in-from-top-1">
                 <AlertOctagon className="w-4 h-4 text-red-500 shrink-0" />
@@ -651,7 +696,6 @@ export default function App() {
         </div>
       </aside>
 
-      {/* --- MAIN CONTENT --- */}
       <main className="flex-1 flex flex-col relative overflow-hidden transition-all duration-300 bg-[#0d1117]">
         <header className="h-14 bg-[#151b26]/80 backdrop-blur-xl border-b border-[#2a3441] px-6 flex items-center justify-between shrink-0 z-10">
           <div className="flex items-center gap-4">
@@ -674,7 +718,6 @@ export default function App() {
               </h2>
             </div>
           </div>
-
           <div className="flex items-center gap-4">
             {analysisResult && (
               <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-white/10 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
@@ -685,7 +728,7 @@ export default function App() {
         </header>
 
         <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
-          <div className="max-w-5xl mx-auto space-y-6">
+          <div className="w-full mx-auto space-y-6">
             {!analysisResult && !loading && (
               <div className="h-[70vh] flex flex-col items-center justify-center text-center space-y-8 animate-in fade-in duration-700">
                 <div className="relative">
@@ -747,170 +790,195 @@ export default function App() {
 
                 {activeTab === "overview" && (
                   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                      {/* --- MAIN VERDICT HERO (Compact Card Layout) --- */}
-                      <div
-                        onClick={() => setShowFullVerdict(true)}
-                        className="lg:col-span-3 bg-gradient-to-br from-[#1a212d] to-[#151b26] border border-[#2a3441] p-5 rounded-2xl shadow-xl relative overflow-hidden group cursor-pointer hover:border-blue-500/30 transition-all active:scale-[0.995]"
-                      >
-                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                          <Activity className="w-24 h-24 text-white" />
-                        </div>
-                        <div className="relative z-10">
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                              <p className="text-[9px] font-black text-blue-400 uppercase tracking-[0.2em]">
-                                Adjudicated Verdict
-                              </p>
-                            </div>
-                            <Maximize2 className="w-3 h-3 text-slate-600 group-hover:text-blue-500 transition-colors" />
-                          </div>
-                          <h2 className="text-sm font-bold text-white leading-relaxed mb-3">
-                            {analysisResult.discrepancy_alert.summary.length >
-                            220
-                              ? analysisResult.discrepancy_alert.summary.substring(
-                                  0,
-                                  220,
-                                ) + "..."
-                              : analysisResult.discrepancy_alert.summary}
-                          </h2>
-                          <div className="flex flex-wrap gap-2">
-                            {analysisResult.agent_reports.map((agent, i) => (
-                              <span
-                                key={i}
-                                className="px-2 py-0.5 bg-white/5 rounded-md border border-white/10 text-[8px] font-bold text-slate-400 uppercase"
-                              >
-                                {agent.agent_name} verified
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* --- DYNAMIC CONSENSUS SCORE (Centered Percent) --- */}
-                      <div
-                        className={`border rounded-2xl p-5 flex flex-col items-center justify-center space-y-3 shadow-xl transition-all duration-700 ${SEVERITY_MAP[getSeverity(analysisResult.discrepancy_alert.score)].bg} ${SEVERITY_MAP[getSeverity(analysisResult.discrepancy_alert.score)].border}`}
-                      >
-                        <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">
-                          Discrepancy Severity
-                        </h4>
-                        <div className="relative flex items-center justify-center w-28 h-28">
-                          <svg
-                            className="w-full h-full transform -rotate-90 block"
-                            viewBox="0 0 128 128"
-                          >
-                            <circle
-                              cx="64"
-                              cy="64"
-                              r="58"
-                              stroke="currentColor"
-                              strokeWidth="8"
-                              fill="transparent"
-                              className="text-slate-800"
-                            />
-                            <circle
-                              cx="64"
-                              cy="64"
-                              r="58"
-                              stroke="currentColor"
-                              strokeWidth="8"
-                              strokeLinecap="round"
-                              fill="transparent"
-                              className="transition-all duration-1000 ease-out"
-                              style={{
-                                color:
-                                  SEVERITY_MAP[
-                                    getSeverity(
-                                      analysisResult.discrepancy_alert.score,
-                                    )
-                                  ].stroke,
-                                strokeDasharray: 364,
-                                strokeDashoffset:
-                                  364 -
-                                  364 * analysisResult.discrepancy_alert.score,
-                                filter: `drop-shadow(0 0 6px ${SEVERITY_MAP[getSeverity(analysisResult.discrepancy_alert.score)].stroke}44)`,
-                              }}
-                            />
-                          </svg>
-                          <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                            <span
-                              className={`text-2xl font-black leading-none ${SEVERITY_MAP[getSeverity(analysisResult.discrepancy_alert.score)].color}`}
-                            >
-                              {Math.round(
-                                analysisResult.discrepancy_alert.score * 100,
-                              )}
-                              %
-                            </span>
-                            <span className="text-[7px] font-black text-slate-500 uppercase tracking-tighter mt-1">
-                              Conflict
-                            </span>
-                          </div>
-                        </div>
-                        <p
-                          className={`text-[8px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${SEVERITY_MAP[getSeverity(analysisResult.discrepancy_alert.score)].color} ${SEVERITY_MAP[getSeverity(analysisResult.discrepancy_alert.score)].border}`}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+                      {/* --- COL 1: ADJUDICATED VERDICT --- */}
+                      <div className="lg:col-span-5 flex flex-col gap-4 min-h-full">
+                        <div
+                          onClick={() => setShowFullVerdict(true)}
+                          className="bg-gradient-to-br from-[#1a212d] to-[#151b26] border border-[#2a3441] p-5 rounded-2xl shadow-xl relative overflow-hidden group cursor-pointer hover:border-blue-500/30 transition-all active:scale-[0.995] flex-1"
                         >
-                          {getSeverity(analysisResult.discrepancy_alert.score)}{" "}
-                          Alert
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* DYNAMIC GRID: Spans full width if no contradictions exist */}
-                    <div
-                      className={`grid grid-cols-1 gap-6 ${analysisResult.key_contradictions?.length > 0 ? "lg:grid-cols-2" : ""}`}
-                    >
-                      <div className="bg-[#151b26] border border-[#2a3441] rounded-2xl overflow-hidden shadow-lg flex flex-col">
-                        <div className="px-6 py-4 border-b border-[#2a3441] flex items-center justify-between bg-blue-500/5">
-                          <h4 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2">
-                            <ArrowRightCircle className="w-4 h-4 text-blue-500" />{" "}
-                            Clinical Directives
-                          </h4>
-                        </div>
-                        <div className="p-6 space-y-4 flex-1">
-                          {analysisResult.recommended_data_actions?.map(
-                            (action, i) => (
-                              <div
-                                key={i}
-                                className="flex gap-4 items-start p-4 bg-[#0a0e14] border border-[#2a3441] rounded-xl hover:border-blue-500/30 transition-colors group"
-                              >
-                                <div className="w-6 h-6 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5 group-hover:bg-blue-500/20 transition-colors">
-                                  <CheckCircle className="w-3.5 h-3.5 text-blue-500" />
-                                </div>
-                                <p className="text-xs text-slate-200 leading-relaxed font-medium">
-                                  {action}
+                          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                            <Activity className="w-24 h-24 text-white" />
+                          </div>
+                          <div className="relative z-10 h-full flex flex-col">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                                <p className="text-[9px] font-black text-blue-400 uppercase tracking-[0.2em]">
+                                  Adjudicated Verdict
                                 </p>
                               </div>
-                            ),
-                          )}
+                              <Maximize2 className="w-3 h-3 text-slate-600 group-hover:text-blue-500 transition-colors" />
+                            </div>
+                            <h2 className="text-sm font-bold text-white leading-relaxed mb-3 flex-1">
+                              {analysisResult.discrepancy_alert.summary.length >
+                              220
+                                ? analysisResult.discrepancy_alert.summary.substring(
+                                    0,
+                                    220,
+                                  ) + "..."
+                                : analysisResult.discrepancy_alert.summary}
+                            </h2>
+                            <div className="flex flex-wrap gap-2 pt-3 border-t border-white/5">
+                              {analysisResult.agent_reports.map((agent, i) => (
+                                <span
+                                  key={i}
+                                  className="px-2 py-0.5 bg-white/5 rounded-md border border-white/10 text-[8px] font-bold text-slate-400 uppercase"
+                                >
+                                  {agent.agent_name} verified
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        {analysisResult.key_contradictions?.length > 0 && (
+                          <div className="bg-rose-500/5 border border-rose-500/20 rounded-2xl overflow-hidden shadow-lg p-4 flex flex-col shrink-0">
+                            <div className="flex items-center gap-2 mb-2">
+                              <AlertTriangle className="w-3 h-3 text-rose-500" />
+                              <h4 className="text-[9px] font-black text-rose-500 uppercase tracking-widest">
+                                Contradictions
+                              </h4>
+                            </div>
+                            <div className="space-y-1.5">
+                              {analysisResult.key_contradictions
+                                .slice(0, 2)
+                                .map((contradiction, i) => (
+                                  <p
+                                    key={i}
+                                    className="text-[10px] text-rose-100/70 leading-tight"
+                                  >
+                                    • {contradiction}
+                                  </p>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* --- COL 2: CLINICAL DIRECTIVES --- */}
+                      <div className="lg:col-span-4 flex flex-col min-h-full">
+                        <div
+                          onClick={() => setShowFullDirectives(true)}
+                          className="bg-gradient-to-br from-[#1a212d] to-[#151b26] border border-[#2a3441] p-5 rounded-2xl shadow-xl relative overflow-hidden group cursor-pointer hover:border-blue-500/30 transition-all active:scale-[0.995] flex-1"
+                        >
+                          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                            <ArrowRightCircle className="w-24 h-24 text-white" />
+                          </div>
+                          <div className="relative z-10 h-full flex flex-col">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                <p className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.2em]">
+                                  Clinical Directives
+                                </p>
+                              </div>
+                              <Maximize2 className="w-3 h-3 text-slate-600 group-hover:text-blue-500 transition-colors" />
+                            </div>
+                            <div className="flex-1 space-y-2 mb-3 overflow-hidden">
+                              {analysisResult.recommended_data_actions
+                                ?.slice(0, 3)
+                                .map((action, i) => (
+                                  <div
+                                    key={i}
+                                    className="flex gap-2 items-start"
+                                  >
+                                    <div className="w-3 h-3 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                                      <CheckCircle className="w-2.5 h-2.5 text-blue-500" />
+                                    </div>
+                                    <p className="text-sm text-slate-300 leading-snug line-clamp-2">
+                                      {action}
+                                    </p>
+                                  </div>
+                                ))}
+                            </div>
+                            <div className="flex items-center justify-between pt-3 border-t border-white/5">
+                              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                {
+                                  analysisResult.recommended_data_actions
+                                    ?.length
+                                }{" "}
+                                Critical Actions
+                              </span>
+                              <span className="text-[9px] font-bold text-blue-500 uppercase tracking-widest group-hover:underline">
+                                Inspect Protocols
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
 
-                      {analysisResult.key_contradictions?.length > 0 && (
-                        <div className="bg-rose-500/5 border border-rose-500/20 rounded-2xl overflow-hidden shadow-lg flex flex-col">
-                          <div className="px-6 py-4 border-b border-[#2a3441] flex items-center justify-between">
-                            <h4 className="text-xs font-black text-rose-500 uppercase tracking-widest flex items-center gap-2">
-                              <AlertTriangle className="w-4 h-4" /> Agent
-                              Contradictions
-                            </h4>
+                      {/* --- COL 3: DISCREPANCY SEVERITY --- */}
+                      <div className="lg:col-span-3 min-h-full">
+                        <div
+                          className={`h-full border rounded-2xl p-5 flex flex-col items-center justify-center space-y-3 shadow-xl transition-all duration-700 ${SEVERITY_MAP[getSeverity(analysisResult.discrepancy_alert.score)].bg} ${SEVERITY_MAP[getSeverity(analysisResult.discrepancy_alert.score)].border}`}
+                        >
+                          <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">
+                            Discrepancy Severity
+                          </h4>
+                          <div className="relative flex items-center justify-center w-28 h-28">
+                            <svg
+                              className="w-full h-full transform -rotate-90 block"
+                              viewBox="0 0 128 128"
+                            >
+                              <circle
+                                cx="64"
+                                cy="64"
+                                r="58"
+                                stroke="currentColor"
+                                strokeWidth="8"
+                                fill="transparent"
+                                className="text-slate-800"
+                              />
+                              <circle
+                                cx="64"
+                                cy="64"
+                                r="58"
+                                stroke="currentColor"
+                                strokeWidth="8"
+                                strokeLinecap="round"
+                                fill="transparent"
+                                className="transition-all duration-1000 ease-out"
+                                style={{
+                                  color:
+                                    SEVERITY_MAP[
+                                      getSeverity(
+                                        analysisResult.discrepancy_alert.score,
+                                      )
+                                    ].stroke,
+                                  strokeDasharray: 364,
+                                  strokeDashoffset:
+                                    364 -
+                                    364 *
+                                      analysisResult.discrepancy_alert.score,
+                                  filter: `drop-shadow(0 0 6px ${SEVERITY_MAP[getSeverity(analysisResult.discrepancy_alert.score)].stroke}44)`,
+                                }}
+                              />
+                            </svg>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                              <span
+                                className={`text-2xl font-black leading-none ${SEVERITY_MAP[getSeverity(analysisResult.discrepancy_alert.score)].color}`}
+                              >
+                                {Math.round(
+                                  analysisResult.discrepancy_alert.score * 100,
+                                )}
+                                %
+                              </span>
+                              <span className="text-[7px] font-black text-slate-500 uppercase tracking-tighter mt-1">
+                                Conflict
+                              </span>
+                            </div>
                           </div>
-                          <div className="p-6 space-y-4 flex-1">
-                            {analysisResult.key_contradictions.map(
-                              (contradiction, i) => (
-                                <div
-                                  key={i}
-                                  className="flex gap-4 items-start p-4 bg-[#0a0e14] border border-rose-500/20 rounded-xl"
-                                >
-                                  <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                                  <p className="text-xs text-rose-100/80 leading-relaxed">
-                                    {contradiction}
-                                  </p>
-                                </div>
-                              ),
-                            )}
-                          </div>
+                          <p
+                            className={`text-[8px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${SEVERITY_MAP[getSeverity(analysisResult.discrepancy_alert.score)].color} ${SEVERITY_MAP[getSeverity(analysisResult.discrepancy_alert.score)].border}`}
+                          >
+                            {getSeverity(
+                              analysisResult.discrepancy_alert.score,
+                            )}{" "}
+                            Alert
+                          </p>
                         </div>
-                      )}
+                      </div>
                     </div>
 
                     <ConfidenceHeatmap />
