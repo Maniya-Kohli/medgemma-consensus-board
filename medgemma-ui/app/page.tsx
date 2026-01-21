@@ -32,8 +32,8 @@ import {
 } from "lucide-react";
 
 /**
- * AEGIS CLINICAL CONSENSUS BOARD - V3.1
- * Layout refinement: Unified card styling & Dynamic Matrix from Agent Reports.
+ * AEGIS CLINICAL CONSENSUS BOARD - V3.2
+ * Layout refinement: Unified font styles, restored placeholder, and dynamic data matrix.
  */
 
 // --- Interfaces ---
@@ -57,17 +57,11 @@ interface Claim {
   evidence: EvidenceRef[];
 }
 
-interface QualityFlag {
-  type: string;
-  severity: "low" | "medium" | "high";
-  detail?: string;
-}
-
 interface AgentReport {
   agent_name: "imaging" | "acoustics" | "history";
   model: string;
   claims: Claim[];
-  quality_flags: QualityFlag[];
+  quality_flags: any[];
   uncertainties: string[];
   requested_data: string[];
 }
@@ -89,7 +83,6 @@ interface AnalysisResult {
   agent_reports: AgentReport[];
   audit_markdown?: string;
   thought_process?: string;
-  matrix_data?: number[][];
   matrix_details?: Record<string, { description: string; findings: string[] }>;
 }
 
@@ -250,31 +243,40 @@ export default function App() {
     return "low";
   };
 
-  const HeatmapTile = ({ value, agent, category, onClick }: any) => (
-    <button
-      onClick={() => onClick(agent, category, value)}
-      className={`group relative h-7 w-full rounded-sm transition-all duration-300 ${value > 0.7 ? "bg-blue-500 hover:bg-blue-400" : value > 0.4 ? "bg-blue-400 hover:bg-blue-300" : "bg-slate-700 hover:bg-slate-600"} hover:ring-2 hover:ring-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500`}
-      style={{ opacity: Math.max(0.1, value) }}
-    >
-      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-        <Maximize2 className="w-2.5 h-2.5 text-white" />
-      </div>
-    </button>
-  );
+  const HeatmapTile = ({ value, agent, category, onClick }: any) => {
+    // Dynamic color based on confidence level
+    const getBgColor = (val: number) => {
+      if (val > 0.8) return "bg-blue-600";
+      if (val > 0.6) return "bg-blue-500";
+      if (val > 0.4) return "bg-blue-400";
+      if (val > 0.2) return "bg-slate-600";
+      return "bg-slate-700";
+    };
+
+    return (
+      <button
+        onClick={() => onClick(agent, category, value)}
+        className={`group relative h-7 w-full rounded-sm transition-all duration-300 ${getBgColor(value)} hover:ring-2 hover:ring-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500`}
+        style={{ opacity: Math.max(0.2, value) }}
+      >
+        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <Maximize2 className="w-2.5 h-2.5 text-white" />
+        </div>
+      </button>
+    );
+  };
 
   const ConfidenceHeatmap = () => {
     const categories = ["Consolidation", "Effusion", "Airway", "Risk Factor"];
 
-    // Map agent reports to the heatmap matrix
+    // Map agent reports to the heatmap matrix using provided logic
     const matrix = analysisResult?.agent_reports.map((agent) => {
       return categories.map((cat) => {
-        // Find if any claim matches the category keyword
         const specificClaim = agent.claims.find(
           (c) =>
             c.label.toLowerCase().includes(cat.toLowerCase()) ||
             c.value.toLowerCase().includes(cat.toLowerCase()),
         );
-        // If specific match found, use it; otherwise use general agent confidence or 0
         return specificClaim
           ? specificClaim.confidence
           : agent.claims[0]?.confidence || 0;
@@ -886,7 +888,7 @@ export default function App() {
                                     <div className="w-3 h-3 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5">
                                       <CheckCircle className="w-2.5 h-2.5 text-blue-500" />
                                     </div>
-                                    <p className="text-sm text-slate-300 leading-snug line-clamp-2">
+                                    <p className="text-sm font-bold text-white leading-snug line-clamp-2">
                                       {action}
                                     </p>
                                   </div>
