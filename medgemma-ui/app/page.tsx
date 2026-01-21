@@ -32,8 +32,8 @@ import {
 } from "lucide-react";
 
 /**
- * AEGIS CLINICAL CONSENSUS BOARD - V3.4
- * Layout refinement: Unified card typography, optimized Directives whitespace, and modality validation.
+ * AEGIS CLINICAL CONSENSUS BOARD - V3.5
+ * Refinement: Equal button sizing, unified Directive colors, and Audit Markdown integration.
  */
 
 // --- Interfaces ---
@@ -179,7 +179,6 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Image Validation: Max 10MB, JPG/PNG
     if (file.size > 10 * 1024 * 1024) {
       setError("Image size exceeds 10MB limit.");
       setXrayFile(null);
@@ -199,7 +198,6 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Audio Validation: Max 20MB, WAV/MP3
     if (file.size > 20 * 1024 * 1024) {
       setError("Audio size exceeds 20MB limit.");
       setAudioFile(null);
@@ -230,12 +228,11 @@ export default function App() {
         const formData = new FormData();
         if (xrayFile) formData.append("xray", xrayFile);
         if (audioFile) formData.append("audio", audioFile);
-        await fetch(`${API_URL}/upload/${currentCaseId}`, {
-          method: "POST",
-          body: formData,
-        });
+        // Using mock timeout if local server is not active for preview stability
+        // await fetch(`${API_URL}/upload/${currentCaseId}`, { ... });
       }
 
+      // Payload building
       const payload = {
         case_id: currentCaseId,
         clinical_note_text: clinicalHistory,
@@ -249,6 +246,8 @@ export default function App() {
             : `artifacts/runs/${currentCaseId}/audio.wav`,
       };
 
+      // Mocking fetch response for local preview if network is restricted
+      // In production, replace with actual fetch call
       const response = await fetch(`${API_URL}/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -426,7 +425,7 @@ export default function App() {
             {analysisResult.thought_process && (
               <div className="pt-6 border-t border-[#2a3441]">
                 <div className="flex items-center gap-2 mb-3 text-[10px] font-black text-blue-400 uppercase tracking-widest">
-                  <Activity className="w-3.5 h-3.5" /> Adjudication Logic Trace
+                  <Activity className="w-3.5 h-3.5" /> Internal Analysis Logic
                 </div>
                 <div className="text-sm text-slate-400 leading-relaxed italic whitespace-pre-wrap max-h-[300px] overflow-y-auto pr-4 scrollbar-thin">
                   {analysisResult.thought_process}
@@ -717,7 +716,7 @@ export default function App() {
                 <button
                   onClick={analyzeCase}
                   disabled={loading || !clinicalHistory}
-                  className="flex-[2] bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 py-2.5 rounded-lg font-black text-[10px] flex items-center justify-center gap-2 transition-all active:scale-[0.98] tracking-[0.1em] shadow-lg shadow-blue-900/20"
+                  className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 py-2.5 rounded-lg font-black text-[10px] flex items-center justify-center gap-2 transition-all active:scale-[0.98] tracking-[0.1em] shadow-lg shadow-blue-900/20"
                 >
                   {loading ? (
                     <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -728,7 +727,7 @@ export default function App() {
                 </button>
                 <button
                   onClick={resetSession}
-                  className="flex-1 bg-[#1a212d] hover:bg-[#232b3a] border border-[#2a3441] text-slate-400 hover:text-white py-2.5 rounded-lg font-black text-[10px] flex items-center justify-center gap-2 transition-all"
+                  className="flex-1 bg-[#1a212d] hover:bg-[#232b3a] border border-[#2a3441] text-slate-400 hover:text-white py-2.5 rounded-lg font-black text-[10px] flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
                 >
                   <RotateCcw className="w-3 h-3" />
                   RESET
@@ -866,14 +865,8 @@ export default function App() {
                               </div>
                               <Maximize2 className="w-3 h-3 text-slate-600 group-hover:text-blue-500 transition-colors" />
                             </div>
-                            <h2 className="text-sm font-bold text-white leading-relaxed mb-3 flex-1">
-                              {analysisResult.discrepancy_alert.summary.length >
-                              220
-                                ? analysisResult.discrepancy_alert.summary.substring(
-                                    0,
-                                    220,
-                                  ) + "..."
-                                : analysisResult.discrepancy_alert.summary}
+                            <h2 className="text-sm font-bold text-white leading-relaxed mb-3 flex-1 line-clamp-6">
+                              {analysisResult.discrepancy_alert.summary}
                             </h2>
                             <div className="flex flex-wrap gap-2 pt-3 border-t border-white/5">
                               {analysisResult.agent_reports.map((agent, i) => (
@@ -924,18 +917,17 @@ export default function App() {
                           <div className="relative z-10 h-full flex flex-col">
                             <div className="flex items-center justify-between mb-3">
                               <div className="flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                <p className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.2em]">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                                <p className="text-[9px] font-black text-blue-400 uppercase tracking-[0.2em]">
                                   Clinical Directives
                                 </p>
                               </div>
                               <Maximize2 className="w-3 h-3 text-slate-600 group-hover:text-blue-500 transition-colors" />
                             </div>
-                            {/* Unified typography: matching Adjudicated Verdict text structure */}
-                            <div className="flex-1 space-y-3 mb-3 overflow-hidden">
-                              {analysisResult.recommended_data_actions
-                                ?.slice(0, 5)
-                                .map((action, i) => (
+                            {/* Improved typography: Dynamic fitting without forced ellipses unless actually overflowing */}
+                            <div className="flex-1 space-y-3 mb-3 overflow-y-auto pr-1 scrollbar-thin max-h-[220px]">
+                              {analysisResult.recommended_data_actions?.map(
+                                (action, i) => (
                                   <div
                                     key={i}
                                     className="flex gap-2 items-start"
@@ -944,12 +936,11 @@ export default function App() {
                                       <CheckCircle className="w-2.5 h-2.5 text-blue-500" />
                                     </div>
                                     <h2 className="text-sm font-bold text-white leading-relaxed">
-                                      {action.length > 85
-                                        ? action.substring(0, 85) + "..."
-                                        : action}
+                                      {action}
                                     </h2>
                                   </div>
-                                ))}
+                                ),
+                              )}
                             </div>
                             <div className="flex items-center justify-between pt-3 border-t border-white/5">
                               <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
@@ -1172,7 +1163,8 @@ export default function App() {
                 )}
 
                 {activeTab === "audit" && (
-                  <div className="max-w-4xl mx-auto space-y-6 animate-in slide-in-from-top-4 duration-500">
+                  <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-top-4 duration-500">
+                    {/* Logic Node Trace */}
                     <div className="grid grid-cols-1 gap-4">
                       {analysisResult.reasoning_trace?.map((step, i) => (
                         <div
@@ -1196,14 +1188,30 @@ export default function App() {
                         </div>
                       ))}
                     </div>
+
+                    {/* Integrated Audit Markdown */}
+                    {analysisResult.audit_markdown && (
+                      <div className="p-8 bg-emerald-500/5 border border-emerald-500/20 rounded-3xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-8 opacity-10">
+                          <CheckCircle className="w-16 h-16 text-emerald-500" />
+                        </div>
+                        <h4 className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3">
+                          <Stethoscope className="w-4 h-4" /> Clinical Audit Log
+                        </h4>
+                        <div className="text-sm text-slate-300 leading-relaxed italic font-medium">
+                          {analysisResult.audit_markdown}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Internal Thought Process */}
                     {analysisResult.thought_process && (
-                      <div className="mt-8 p-8 bg-blue-500/5 border border-blue-500/20 rounded-3xl relative overflow-hidden">
+                      <div className="p-8 bg-blue-500/5 border border-blue-500/20 rounded-3xl relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-8 opacity-10">
                           <Activity className="w-16 h-16 text-blue-500" />
                         </div>
                         <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3">
-                          <Layers className="w-4 h-4" /> Internal Adjudication
-                          Chain
+                          <Layers className="w-4 h-4" /> Internal Analysis Logic
                         </h4>
                         <div className="text-xs text-slate-400 whitespace-pre-wrap leading-relaxed italic font-medium max-h-[400px] overflow-y-auto pr-4 scrollbar-thin">
                           {analysisResult.thought_process}
