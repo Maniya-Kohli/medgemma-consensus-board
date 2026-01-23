@@ -228,8 +228,18 @@ export default function App() {
         const formData = new FormData();
         if (xrayFile) formData.append("xray", xrayFile);
         if (audioFile) formData.append("audio", audioFile);
-        // Using mock timeout if local server is not active for preview stability
-        // await fetch(`${API_URL}/upload/${currentCaseId}`, { ... });
+
+        // Uncommented the upload call for actual backend integration
+        const uploadResponse = await fetch(
+          `${API_URL}/upload/${currentCaseId}`,
+          {
+            method: "POST",
+            body: formData,
+          },
+        );
+
+        if (!uploadResponse.ok)
+          throw new Error("Failed to upload modalities to server.");
       }
 
       // Payload building
