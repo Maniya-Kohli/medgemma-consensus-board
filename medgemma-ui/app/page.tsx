@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 
 import {
   Activity,
@@ -154,116 +155,503 @@ const SEVERITY_MAP: Record<
     border: "border-rose-500/20",
   },
 };
-const AgenticThinkingTrace = ({ report }: { report: VisionReport }) => {
-  return (
-    <div className="mt-2 space-y-2">
-      <h5 className="text-[8px] font-black text-slate-500 uppercase tracking-widest ml-1">
-        Reasoning Trace
-      </h5>
+// --- Sub-Component: Radiographic Card ---
+const RadiographicCard = ({
+  xrayFile,
+  analysisResult,
+  setShowImagingModal,
+}: any) => {
+  const imgReport = analysisResult?.agent_reports.find(
+    (a: any) => a.agent_name === "imaging",
+  ) as VisionReport | undefined;
 
-      <div className="relative pl-4 space-y-3 before:absolute before:left-1 before:top-2 before:bottom-2 before:w-px before:bg-slate-800">
-        {/* PHASE 1: THE PLAN */}
-        <div className="relative">
-          <div className="absolute -left-[17px] top-1 w-2 h-2 rounded-full bg-blue-500/40 border border-blue-500" />
-          <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">
-            Phase 1: Strategic Planning
-          </p>
-          <p className="text-[10px] text-slate-500 line-clamp-2 italic">
-            {report.draft_findings}
-          </p>
+  return (
+    <div className="bg-[#151b26] border border-[#2a3441] hover:border-blue-500/30 rounded-2xl shadow-lg transition-all duration-300">
+      <div className="p-5 flex flex-col h-full">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+              <ImageIcon className="w-5 h-5 text-blue-400" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-white">
+                Radiographic Analysis
+              </h4>
+              <p className="text-xs text-slate-400">Multi-phase evaluation</p>
+            </div>
+          </div>
+          <span className="text-xs font-bold px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+            Verified
+          </span>
         </div>
 
-        {/* PHASE 2: SENSITIVE ANALYSIS */}
-        <div className="relative">
-          <div className="absolute -left-[17px] top-1 w-2 h-2 rounded-full bg-amber-500/40 border border-amber-500" />
-          <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">
-            Phase 2: High-Recall Execution
-          </p>
-          <p className="text-[10px] text-slate-500 line-clamp-2 italic">
-            {report.supervisor_critique}
-          </p>
+        <div className="aspect-square bg-[#0a0e14] rounded-xl flex items-center justify-center border border-[#2a3441] relative overflow-hidden group mb-4">
+          {xrayFile ? (
+            <img
+              src={URL.createObjectURL(xrayFile)}
+              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+              alt="X-Ray"
+            />
+          ) : (
+            <div className="text-center flex flex-col items-center opacity-30">
+              <ImageIcon className="w-16 h-16 mb-3 text-slate-600" />
+              <p className="text-xs font-medium text-slate-500">
+                No imaging uploaded
+              </p>
+            </div>
+          )}
+        </div>
+
+        {!imgReport ? (
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-xs text-slate-500 text-center py-8">
+              Awaiting analysis...
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="flex-1 space-y-2 mb-4">
+              {[
+                { label: "Strategic Planning", color: "blue" },
+                { label: "High-Recall Execution", color: "amber" },
+                { label: "Clinical Adjudication", color: "emerald" },
+              ].map((phase) => (
+                <div key={phase.label} className="flex items-center gap-2">
+                  <CheckCircle className={`w-3 h-3 text-${phase.color}-400`} />
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">
+                    {phase.label} Complete
+                  </span>
+                </div>
+              ))}
+
+              <div className="mt-4 pt-4 border-t border-white/5 relative">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Final Assessment
+                </p>
+                <div className="relative max-h-32 overflow-hidden">
+                  <div className="text-xs text-slate-400 leading-relaxed prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-strong:text-slate-200">
+                    <ReactMarkdown>
+                      {imgReport.internal_logic || "Analysis in progress..."}
+                    </ReactMarkdown>
+                  </div>
+                  {imgReport.internal_logic && (
+                    <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#151b26] to-transparent flex items-end justify-center pb-1">
+                      <span className="text-[9px] font-black text-blue-500/60 uppercase tracking-tighter">
+                        ... click "view full analysis"
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowImagingModal(true)}
+              className="w-full py-2 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/20 rounded-lg text-[10px] font-black text-blue-400 uppercase tracking-widest transition-all flex items-center justify-center gap-2 group mt-2"
+            >
+              <Maximize2 className="w-3 h-3 group-hover:scale-110 transition-transform" />
+              View Full Analysis
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// --- Sub-Component: Acoustic Card ---
+const AcousticCard = ({
+  audioFile,
+  isAudioPlaying,
+  setIsAudioPlaying,
+  analysisResult,
+}: any) => {
+  const acousticReport = analysisResult?.agent_reports.find(
+    (a: any) => a.agent_name === "acoustics",
+  );
+
+  return (
+    <div className="bg-[#151b26] border border-[#2a3441] hover:border-emerald-500/30 rounded-2xl shadow-lg transition-all duration-300">
+      <div className="p-5 flex flex-col h-full">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+              <Volume2 className="w-5 h-5 text-emerald-400" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-white">
+                Acoustic Analysis
+              </h4>
+              <p className="text-xs text-slate-400">Auscultation findings</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-[#0a0e14] rounded-xl p-4 border border-[#2a3441] mb-4">
+          {audioFile ? (
+            <div className="space-y-4">
+              <div className="h-16 flex items-end gap-1">
+                {[...Array(32)].map((_, i) => (
+                  <div
+                    key={i}
+                    className={`flex-1 rounded-t transition-all duration-300 ${isAudioPlaying ? "bg-emerald-500/50" : "bg-emerald-500/20"}`}
+                    style={{
+                      height: `${20 + Math.random() * 80}%`,
+                      animationDelay: `${i * 0.03}s`,
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  className="w-10 h-10 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 flex items-center justify-center border border-emerald-500/30"
+                  onClick={() => setIsAudioPlaying(!isAudioPlaying)}
+                >
+                  {isAudioPlaying ? (
+                    <Pause className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <Play className="w-4 h-4 text-emerald-400 ml-0.5" />
+                  )}
+                </button>
+                <div className="flex-1">
+                  <audio
+                    controls
+                    className="w-full h-8 opacity-60"
+                    src={URL.createObjectURL(audioFile)}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8 opacity-30">
+              <Volume2 className="w-12 h-12 mb-2 text-slate-600 mx-auto" />
+              <p className="text-xs font-medium text-slate-500">
+                No audio available
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 space-y-3 overflow-y-auto max-h-[300px]">
+          {acousticReport?.claims.map((claim: any, i: number) => (
+            <div
+              key={i}
+              className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-emerald-400">
+                  Finding {i + 1}
+                </span>
+                <div className="flex items-center gap-2">
+                  <div className="w-16 h-1.5 bg-emerald-500/20 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-500 rounded-full transition-all"
+                      style={{ width: `${claim.confidence * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-medium text-emerald-400">
+                    {Math.round(claim.confidence * 100)}%
+                  </span>
+                </div>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                {claim.value}
+              </p>
+            </div>
+          ))}
         </div>
       </div>
     </div>
   );
 };
 
-// const AgenticThinkingTrace = ({ report }: { report: VisionReport }) => {
-//   const [isExpanded, setIsExpanded] = useState(false);
+// --- Sub-Component: History Card ---
+const HistoryCard = ({ analysisResult }: any) => {
+  const historyClaims = analysisResult?.agent_reports.find(
+    (a: any) => a.agent_name === "history",
+  )?.claims;
 
-//   // JavaScript uses .trim(), not .strip()
-//   const cleanText = (text: string) => text?.trim() || "No data provided";
+  return (
+    <div className="bg-[#151b26] border border-[#2a3441] hover:border-amber-500/30 rounded-2xl shadow-lg transition-all duration-300">
+      <div className="p-5 flex flex-col h-full">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
+              <ClipboardList className="w-5 h-5 text-amber-400" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-white">Patient History</h4>
+              <p className="text-xs text-slate-400">Extracted findings</p>
+            </div>
+          </div>
+        </div>
 
-//   return (
-//     <div className="mt-4 border-t border-white/5 pt-4">
-//       <button
-//         onClick={() => setIsExpanded(!isExpanded)}
-//         className="w-full flex items-center justify-between p-2.5 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/20 rounded-xl transition-all group"
-//       >
-//         <div className="flex items-center gap-2">
-//           <div className="relative">
-//             <Activity className="w-3.5 h-3.5 text-blue-400 group-hover:animate-pulse" />
-//             <div className="absolute inset-0 bg-blue-400/20 blur-sm rounded-full" />
-//           </div>
-//           <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">
-//             Agentic Reasoning Trace
-//           </span>
-//         </div>
-//         <ChevronRight
-//           className={`w-3.5 h-3.5 text-blue-400 transition-transform duration-300 ${isExpanded ? "rotate-90" : ""}`}
-//         />
-//       </button>
+        <div className="flex-1 space-y-2 overflow-y-auto max-h-[500px]">
+          {historyClaims?.map((claim: any, i: number) => (
+            <div
+              key={i}
+              className="bg-[#0a0e14] border border-amber-500/20 rounded-lg p-3 hover:border-amber-500/40 transition-colors"
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-xs font-bold text-amber-400">
+                    {i + 1}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed flex-1">
+                  {claim.value}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+// --- Sub-Component: Verdict & Contradictions ---
+const VerdictCard = ({ analysisResult, setShowFullVerdict }: any) => {
+  return (
+    <div className="lg:col-span-5 flex flex-col gap-4 min-h-full">
+      <div
+        onClick={() => setShowFullVerdict(true)}
+        className="bg-gradient-to-br from-[#1a212d] to-[#151b26] border border-[#2a3441] p-5 rounded-2xl shadow-xl relative overflow-hidden group cursor-pointer hover:border-blue-500/30 transition-all active:scale-[0.995] flex-1"
+      >
+        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+          <Activity className="w-24 h-24 text-white" />
+        </div>
+        <div className="relative z-10 h-full flex flex-col">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              <p className="text-[9px] font-black text-blue-400 uppercase tracking-[0.2em]">
+                Adjudicated Verdict
+              </p>
+            </div>
+            <Maximize2 className="w-3 h-3 text-slate-600 group-hover:text-blue-500 transition-colors" />
+          </div>
 
-//       {isExpanded && (
-//         <div className="mt-3 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-//           {/* PHASE 1: PERCEPTION */}
-//           <div className="relative pl-6 border-l border-slate-800">
-//             <div className="absolute -left-1.5 top-0 w-3 h-3 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
-//               <div className="w-1 h-1 rounded-full bg-slate-500" />
-//             </div>
-//             <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">
-//               Step 1: Perception Trace
-//             </p>
-//             <div className="space-y-2">
-//               {/* Displaying the Draft Findings stored in the report object */}
-//               <p className="text-[10px] text-slate-400 leading-relaxed italic bg-white/5 p-2 rounded-lg border border-white/5 whitespace-pre-wrap">
-//                 {" "}
-//                 {cleanText(report.draft_findings)}
-//               </p>
-//             </div>
-//           </div>
+          <div className="text-sm font-bold text-white leading-relaxed mb-3 flex-1 line-clamp-6 prose prose-invert prose-sm max-w-none">
+            <ReactMarkdown>
+              {analysisResult.discrepancy_alert.summary}
+            </ReactMarkdown>
+          </div>
 
-//           {/* PHASE 2: REFLECTION */}
-//           <div className="relative pl-6 border-l border-blue-500/30">
-//             <div className="absolute -left-1.5 top-0 w-3 h-3 rounded-full bg-blue-500/20 border border-blue-500/50 flex items-center justify-center">
-//               <ShieldAlert className="w-2 h-2 text-blue-400" />
-//             </div>
-//             <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">
-//               Step 2: Recursive Critique
-//             </p>
-//             <p className="text-[10px] text-blue-100/70 leading-relaxed bg-blue-500/5 p-2 rounded-lg border border-blue-500/10">
-//               {cleanText(report.supervisor_critique)}
-//             </p>
-//           </div>
+          <div className="flex flex-wrap gap-2 pt-3 border-t border-white/5">
+            {analysisResult.agent_reports.map((agent: any, i: number) => (
+              <span
+                key={i}
+                className="px-2 py-0.5 bg-white/5 rounded-md border border-white/10 text-[8px] font-bold text-slate-400 uppercase"
+              >
+                {agent.agent_name} verified
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
 
-//           {/* PHASE 3: ADJUDICATION */}
-//           <div className="relative pl-6 border-l border-emerald-500/30">
-//             <div className="absolute -left-1.5 top-0 w-3 h-3 rounded-full bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center">
-//               <CheckCircle className="w-2 h-2 text-emerald-400" />
-//             </div>
-//             <p className="text-[8px] font-black text-emerald-400 uppercase tracking-widest mb-1">
-//               Step 3: Clinical Adjudication
-//             </p>
-//             <p className="text-[10px] text-emerald-100/60 leading-relaxed font-mono bg-emerald-500/5 p-2 rounded-lg border border-emerald-500/10">
-//               {cleanText(report.internal_logic)}
-//             </p>
-//           </div>
-//         </div>
-//       )}
-//     </div>
-//   );
-// };
+      {analysisResult.key_contradictions?.length > 0 && (
+        <div className="bg-rose-500/5 border border-rose-500/20 rounded-2xl overflow-hidden shadow-lg p-4 flex flex-col shrink-0">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className="w-3 h-3 text-rose-500" />
+            <h4 className="text-[9px] font-black text-rose-500 uppercase tracking-widest">
+              Contradictions
+            </h4>
+          </div>
+          <div className="space-y-1.5">
+            {analysisResult.key_contradictions
+              .slice(0, 2)
+              .map((contradiction: string, i: number) => (
+                <p
+                  key={i}
+                  className="text-[10px] text-rose-100/70 leading-tight"
+                >
+                  • {contradiction}
+                </p>
+              ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
+// --- Sub-Component: Clinical Directives ---
+const DirectivesCard = ({ analysisResult, setShowFullDirectives }: any) => {
+  return (
+    <div className="lg:col-span-4 flex flex-col min-h-full">
+      <div
+        onClick={() => setShowFullDirectives(true)}
+        className="bg-gradient-to-br from-[#1a212d] to-[#151b26] border border-[#2a3441] p-5 rounded-2xl shadow-xl relative overflow-hidden group cursor-pointer hover:border-blue-500/30 transition-all active:scale-[0.995] flex-1"
+      >
+        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+          <ArrowRightCircle className="w-24 h-24 text-white" />
+        </div>
+        <div className="relative z-10 h-full flex flex-col">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              <p className="text-[9px] font-black text-blue-400 uppercase tracking-[0.2em]">
+                {" "}
+                Clinical Directives{" "}
+              </p>
+            </div>
+            <Maximize2 className="w-3 h-3 text-slate-600 group-hover:text-blue-500 transition-colors" />
+          </div>
+          <div className="flex-1 space-y-3 mb-3 overflow-y-auto pr-1 scrollbar-thin max-h-[220px]">
+            {analysisResult.recommended_data_actions?.map(
+              (action: string, i: number) => (
+                <div key={i} className="flex gap-2 items-start">
+                  <div className="w-3.5 h-3.5 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <CheckCircle className="w-2.5 h-2.5 text-blue-500" />
+                  </div>
+                  <h2 className="text-sm font-bold text-white leading-relaxed">
+                    {action}
+                  </h2>
+                </div>
+              ),
+            )}
+          </div>
+          <div className="flex items-center justify-between pt-3 border-t border-white/5">
+            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+              {analysisResult.recommended_data_actions?.length} Critical Actions
+            </span>
+            <span className="text-[9px] font-bold text-blue-500 uppercase tracking-widest group-hover:underline">
+              {" "}
+              Inspect Protocols{" "}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Sub-Component: Severity Gauge ---
+const SeverityCard = ({ analysisResult, getSeverity, SEVERITY_MAP }: any) => {
+  const severity = getSeverity(analysisResult.discrepancy_alert.score);
+  const theme = SEVERITY_MAP[severity];
+
+  return (
+    <div className="lg:col-span-3 min-h-full">
+      <div
+        className={`h-full border rounded-2xl p-5 flex flex-col items-center justify-center space-y-3 shadow-xl transition-all duration-700 ${theme.bg} ${theme.border}`}
+      >
+        <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">
+          {" "}
+          Discrepancy Severity{" "}
+        </h4>
+        <div className="relative flex items-center justify-center w-28 h-28">
+          <svg
+            className="w-full h-full transform -rotate-90 block"
+            viewBox="0 0 128 128"
+          >
+            <circle
+              cx="64"
+              cy="64"
+              r="58"
+              stroke="currentColor"
+              strokeWidth="8"
+              fill="transparent"
+              className="text-slate-800"
+            />
+            <circle
+              cx="64"
+              cy="64"
+              r="58"
+              stroke="currentColor"
+              strokeWidth="8"
+              strokeLinecap="round"
+              fill="transparent"
+              className="transition-all duration-1000 ease-out"
+              style={{
+                color: theme.stroke,
+                strokeDasharray: 364,
+                strokeDashoffset:
+                  364 - 364 * analysisResult.discrepancy_alert.score,
+                filter: `drop-shadow(0 0 6px ${theme.stroke}44)`,
+              }}
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+            <span className={`text-2xl font-black leading-none ${theme.color}`}>
+              {" "}
+              {Math.round(analysisResult.discrepancy_alert.score * 100)}%{" "}
+            </span>
+            <span className="text-[7px] font-black text-slate-500 uppercase tracking-tighter mt-1">
+              {" "}
+              Conflict{" "}
+            </span>
+          </div>
+        </div>
+        <p
+          className={`text-[8px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${theme.color} ${theme.border}`}
+        >
+          {severity} Alert
+        </p>
+      </div>
+    </div>
+  );
+};
+
+// --- Sub-Component: Reasoning Trace Node ---
+const LogicNode = ({
+  step,
+  index,
+  isLast,
+}: {
+  step: string;
+  index: number;
+  isLast: boolean;
+}) => (
+  <div className="flex gap-6 p-6 bg-[#151b26] border border-[#2a3441] rounded-2xl items-start relative group hover:bg-[#1a212d] transition-all">
+    {!isLast && (
+      <div className="absolute left-9 top-14 bottom-0 w-px bg-[#2a3441] group-last:hidden" />
+    )}
+    <div className="shrink-0 w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-[11px] font-black text-blue-500 relative z-10 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+      {index + 1}
+    </div>
+    <div className="pt-1 space-y-2 flex-1">
+      <div className="text-xs text-slate-200 leading-relaxed font-medium prose prose-invert prose-sm max-w-none prose-p:leading-relaxed">
+        <ReactMarkdown>{step}</ReactMarkdown>
+      </div>
+      <div className="flex gap-4">
+        <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">
+          Validated Logic Node
+        </span>
+      </div>
+    </div>
+  </div>
+);
+
+// --- Sub-Component: Clinical Audit Log ---
+const AuditLogBlock = ({ content }: { content: string }) => (
+  <div className="p-8 bg-emerald-500/5 border border-emerald-500/20 rounded-3xl relative overflow-hidden">
+    <div className="absolute top-0 right-0 p-8 opacity-10">
+      <CheckCircle className="w-16 h-16 text-emerald-500" />
+    </div>
+    <h4 className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3">
+      <Stethoscope className="w-4 h-4" /> Clinical Audit Log
+    </h4>
+    <div className="text-sm text-slate-300 leading-relaxed italic font-medium prose prose-invert prose-sm max-w-none">
+      <ReactMarkdown>{content}</ReactMarkdown>
+    </div>
+  </div>
+);
+
+// --- Sub-Component: Internal Analysis Logic ---
+const ThoughtProcessBlock = ({ content }: { content: string }) => (
+  <div className="p-8 bg-blue-500/5 border border-blue-500/20 rounded-3xl relative overflow-hidden">
+    <div className="absolute top-0 right-0 p-8 opacity-10">
+      <Activity className="w-16 h-16 text-blue-500" />
+    </div>
+    <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3">
+      <Layers className="w-4 h-4" /> Internal Analysis Logic
+    </h4>
+    <div className="text-xs text-slate-400 leading-relaxed italic font-medium max-h-[400px] overflow-y-auto pr-4 scrollbar-thin prose prose-invert prose-sm max-w-none prose-p:leading-relaxed">
+      <ReactMarkdown>{content}</ReactMarkdown>
+    </div>
+  </div>
+);
 // --- Main Application ---
 
 export default function App() {
@@ -553,6 +941,7 @@ export default function App() {
       </div>
     );
   };
+
   const ImagingAnalysisModal = () => {
     if (!showImagingModal || !analysisResult) return null;
 
@@ -562,13 +951,22 @@ export default function App() {
 
     if (!imgReport) return null;
 
+    // Helper to handle dynamic Tailwind colors safely
+    const colorMap = {
+      blue: "border-blue-500/30 bg-blue-500/5 text-blue-400 icon-bg-blue-500/10",
+      amber:
+        "border-amber-500/30 bg-amber-500/5 text-amber-400 icon-bg-amber-500/10",
+      emerald:
+        "border-emerald-500/30 bg-emerald-500/5 text-emerald-400 icon-bg-emerald-500/10",
+    };
+
     const phases = [
       {
         id: "phase1",
         title: "Strategic Planning",
         subtitle: "Initial Assessment",
         content: imgReport.draft_findings,
-        color: "blue",
+        colorKey: "blue" as const,
         icon: "📋",
       },
       {
@@ -576,7 +974,7 @@ export default function App() {
         title: "High-Recall Execution",
         subtitle: "Detailed Review",
         content: imgReport.supervisor_critique,
-        color: "amber",
+        colorKey: "amber" as const,
         icon: "🔍",
       },
       {
@@ -584,7 +982,7 @@ export default function App() {
         title: "Clinical Adjudication",
         subtitle: "Final Consensus",
         content: imgReport.internal_logic,
-        color: "emerald",
+        colorKey: "emerald" as const,
         icon: "✓",
       },
     ];
@@ -632,31 +1030,40 @@ export default function App() {
 
             {/* Analysis Phases */}
             <div className="space-y-4">
-              {phases.map((phase) => (
-                <div
-                  key={phase.id}
-                  className={`border border-${phase.color}-500/30 bg-${phase.color}-500/5 rounded-xl p-5`}
-                >
-                  <div className="flex items-center gap-3 mb-4">
-                    <div
-                      className={`w-12 h-12 rounded-xl bg-${phase.color}-500/10 flex items-center justify-center text-2xl`}
-                    >
-                      {phase.icon}
-                    </div>
-                    <div>
-                      <h5
-                        className={`text-sm font-bold text-${phase.color}-400`}
+              {phases.map((phase) => {
+                const colors = colorMap[phase.colorKey];
+                return (
+                  <div
+                    key={phase.id}
+                    className={`border rounded-xl p-5 ${colors.split(" ").slice(0, 2).join(" ")}`}
+                  >
+                    <div className="flex items-center gap-3 mb-4">
+                      <div
+                        className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${colors.split(" ")[3].replace("icon-bg-", "")}`}
                       >
-                        {phase.title}
-                      </h5>
-                      <p className="text-xs text-slate-400">{phase.subtitle}</p>
+                        {phase.icon}
+                      </div>
+                      <div>
+                        <h5
+                          className={`text-sm font-bold ${colors.split(" ")[2]}`}
+                        >
+                          {phase.title}
+                        </h5>
+                        <p className="text-xs text-slate-400">
+                          {phase.subtitle}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Markdown Renderer Section */}
+                    <div className="text-sm text-slate-300 leading-relaxed prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-headings:text-slate-200 prose-li:my-0">
+                      <ReactMarkdown>
+                        {phase.content || "*No data available for this phase.*"}
+                      </ReactMarkdown>
                     </div>
                   </div>
-                  <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
-                    {phase.content || "No data available"}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Case Metadata */}
@@ -1151,522 +1558,75 @@ export default function App() {
                 {activeTab === "overview" && (
                   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-                      {/* --- COL 1: ADJUDICATED VERDICT --- */}
-                      <div className="lg:col-span-5 flex flex-col gap-4 min-h-full">
-                        <div
-                          onClick={() => setShowFullVerdict(true)}
-                          className="bg-gradient-to-br from-[#1a212d] to-[#151b26] border border-[#2a3441] p-5 rounded-2xl shadow-xl relative overflow-hidden group cursor-pointer hover:border-blue-500/30 transition-all active:scale-[0.995] flex-1"
-                        >
-                          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                            <Activity className="w-24 h-24 text-white" />
-                          </div>
-                          <div className="relative z-10 h-full flex flex-col">
-                            <div className="flex items-center justify-between mb-3">
-                              <div className="flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                                <p className="text-[9px] font-black text-blue-400 uppercase tracking-[0.2em]">
-                                  Adjudicated Verdict
-                                </p>
-                              </div>
-                              <Maximize2 className="w-3 h-3 text-slate-600 group-hover:text-blue-500 transition-colors" />
-                            </div>
-                            <h2 className="text-sm font-bold text-white leading-relaxed mb-3 flex-1 line-clamp-6">
-                              {analysisResult.discrepancy_alert.summary}
-                            </h2>
-                            <div className="flex flex-wrap gap-2 pt-3 border-t border-white/5">
-                              {analysisResult.agent_reports.map((agent, i) => (
-                                <span
-                                  key={i}
-                                  className="px-2 py-0.5 bg-white/5 rounded-md border border-white/10 text-[8px] font-bold text-slate-400 uppercase"
-                                >
-                                  {agent.agent_name} verified
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
+                      <VerdictCard
+                        analysisResult={analysisResult}
+                        setShowFullVerdict={setShowFullVerdict}
+                      />
 
-                        {analysisResult.key_contradictions?.length > 0 && (
-                          <div className="bg-rose-500/5 border border-rose-500/20 rounded-2xl overflow-hidden shadow-lg p-4 flex flex-col shrink-0">
-                            <div className="flex items-center gap-2 mb-2">
-                              <AlertTriangle className="w-3 h-3 text-rose-500" />
-                              <h4 className="text-[9px] font-black text-rose-500 uppercase tracking-widest">
-                                Contradictions
-                              </h4>
-                            </div>
-                            <div className="space-y-1.5">
-                              {analysisResult.key_contradictions
-                                .slice(0, 2)
-                                .map((contradiction, i) => (
-                                  <p
-                                    key={i}
-                                    className="text-[10px] text-rose-100/70 leading-tight"
-                                  >
-                                    • {contradiction}
-                                  </p>
-                                ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                      <DirectivesCard
+                        analysisResult={analysisResult}
+                        setShowFullDirectives={setShowFullDirectives}
+                      />
 
-                      {/* --- COL 2: CLINICAL DIRECTIVES --- */}
-                      <div className="lg:col-span-4 flex flex-col min-h-full">
-                        <div
-                          onClick={() => setShowFullDirectives(true)}
-                          className="bg-gradient-to-br from-[#1a212d] to-[#151b26] border border-[#2a3441] p-5 rounded-2xl shadow-xl relative overflow-hidden group cursor-pointer hover:border-blue-500/30 transition-all active:scale-[0.995] flex-1"
-                        >
-                          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                            <ArrowRightCircle className="w-24 h-24 text-white" />
-                          </div>
-                          <div className="relative z-10 h-full flex flex-col">
-                            <div className="flex items-center justify-between mb-3">
-                              <div className="flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                                <p className="text-[9px] font-black text-blue-400 uppercase tracking-[0.2em]">
-                                  Clinical Directives
-                                </p>
-                              </div>
-                              <Maximize2 className="w-3 h-3 text-slate-600 group-hover:text-blue-500 transition-colors" />
-                            </div>
-                            {/* Improved typography: Dynamic fitting without forced ellipses unless actually overflowing */}
-                            <div className="flex-1 space-y-3 mb-3 overflow-y-auto pr-1 scrollbar-thin max-h-[220px]">
-                              {analysisResult.recommended_data_actions?.map(
-                                (action, i) => (
-                                  <div
-                                    key={i}
-                                    className="flex gap-2 items-start"
-                                  >
-                                    <div className="w-3.5 h-3.5 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5">
-                                      <CheckCircle className="w-2.5 h-2.5 text-blue-500" />
-                                    </div>
-                                    <h2 className="text-sm font-bold text-white leading-relaxed">
-                                      {action}
-                                    </h2>
-                                  </div>
-                                ),
-                              )}
-                            </div>
-                            <div className="flex items-center justify-between pt-3 border-t border-white/5">
-                              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                                {
-                                  analysisResult.recommended_data_actions
-                                    ?.length
-                                }{" "}
-                                Critical Actions
-                              </span>
-                              <span className="text-[9px] font-bold text-blue-500 uppercase tracking-widest group-hover:underline">
-                                Inspect Protocols
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* --- COL 3: DISCREPANCY SEVERITY --- */}
-                      <div className="lg:col-span-3 min-h-full">
-                        <div
-                          className={`h-full border rounded-2xl p-5 flex flex-col items-center justify-center space-y-3 shadow-xl transition-all duration-700 ${SEVERITY_MAP[getSeverity(analysisResult.discrepancy_alert.score)].bg} ${SEVERITY_MAP[getSeverity(analysisResult.discrepancy_alert.score)].border}`}
-                        >
-                          <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">
-                            Discrepancy Severity
-                          </h4>
-                          <div className="relative flex items-center justify-center w-28 h-28">
-                            <svg
-                              className="w-full h-full transform -rotate-90 block"
-                              viewBox="0 0 128 128"
-                            >
-                              <circle
-                                cx="64"
-                                cy="64"
-                                r="58"
-                                stroke="currentColor"
-                                strokeWidth="8"
-                                fill="transparent"
-                                className="text-slate-800"
-                              />
-                              <circle
-                                cx="64"
-                                cy="64"
-                                r="58"
-                                stroke="currentColor"
-                                strokeWidth="8"
-                                strokeLinecap="round"
-                                fill="transparent"
-                                className="transition-all duration-1000 ease-out"
-                                style={{
-                                  color:
-                                    SEVERITY_MAP[
-                                      getSeverity(
-                                        analysisResult.discrepancy_alert.score,
-                                      )
-                                    ].stroke,
-                                  strokeDasharray: 364,
-                                  strokeDashoffset:
-                                    364 -
-                                    364 *
-                                      analysisResult.discrepancy_alert.score,
-                                  filter: `drop-shadow(0 0 6px ${SEVERITY_MAP[getSeverity(analysisResult.discrepancy_alert.score)].stroke}44)`,
-                                }}
-                              />
-                            </svg>
-                            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                              <span
-                                className={`text-2xl font-black leading-none ${SEVERITY_MAP[getSeverity(analysisResult.discrepancy_alert.score)].color}`}
-                              >
-                                {Math.round(
-                                  analysisResult.discrepancy_alert.score * 100,
-                                )}
-                                %
-                              </span>
-                              <span className="text-[7px] font-black text-slate-500 uppercase tracking-tighter mt-1">
-                                Conflict
-                              </span>
-                            </div>
-                          </div>
-                          <p
-                            className={`text-[8px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${SEVERITY_MAP[getSeverity(analysisResult.discrepancy_alert.score)].color} ${SEVERITY_MAP[getSeverity(analysisResult.discrepancy_alert.score)].border}`}
-                          >
-                            {getSeverity(
-                              analysisResult.discrepancy_alert.score,
-                            )}{" "}
-                            Alert
-                          </p>
-                        </div>
-                      </div>
+                      <SeverityCard
+                        analysisResult={analysisResult}
+                        getSeverity={getSeverity}
+                        SEVERITY_MAP={SEVERITY_MAP}
+                      />
                     </div>
 
                     <ConfidenceHeatmap />
                   </div>
                 )}
                 {/* ==================== EVIDENCE TAB ==================== */}
-
                 {activeTab === "evidence" && (
                   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {/* Cards Grid */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                      {/* ========== CARD 1: RADIOGRAPHIC INPUT ========== */}
-                      <div className="bg-[#151b26] border border-[#2a3441] hover:border-blue-500/30 rounded-2xl shadow-lg transition-all duration-300">
-                        <div className="p-5 flex flex-col h-full">
-                          {/* Card Header */}
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
-                                <ImageIcon className="w-5 h-5 text-blue-400" />
-                              </div>
-                              <div>
-                                <h4 className="text-sm font-bold text-white">
-                                  Radiographic Analysis
-                                </h4>
-                                <p className="text-xs text-slate-400">
-                                  Multi-phase evaluation
-                                </p>
-                              </div>
-                            </div>
-                            <span className="text-xs font-bold px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                              Verified
-                            </span>
-                          </div>
+                      <RadiographicCard
+                        xrayFile={xrayFile}
+                        analysisResult={analysisResult}
+                        setShowImagingModal={setShowImagingModal}
+                      />
 
-                          {/* X-Ray Preview */}
-                          <div className="aspect-square bg-[#0a0e14] rounded-xl flex items-center justify-center border border-[#2a3441] relative overflow-hidden group mb-4">
-                            {xrayFile ? (
-                              <img
-                                src={URL.createObjectURL(xrayFile)}
-                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                alt="X-Ray"
-                              />
-                            ) : (
-                              <div className="text-center flex flex-col items-center opacity-30">
-                                <ImageIcon className="w-16 h-16 mb-3 text-slate-600" />
-                                <p className="text-xs font-medium text-slate-500">
-                                  No imaging uploaded
-                                </p>
-                              </div>
-                            )}
-                          </div>
+                      <AcousticCard
+                        audioFile={audioFile}
+                        isAudioPlaying={isAudioPlaying}
+                        setIsAudioPlaying={setIsAudioPlaying}
+                        analysisResult={analysisResult}
+                      />
 
-                          {/* Analysis Summary */}
-                          {(() => {
-                            const imgReport =
-                              analysisResult?.agent_reports.find(
-                                (a) => a.agent_name === "imaging",
-                              ) as VisionReport | undefined;
-
-                            if (!imgReport) {
-                              return (
-                                <div className="flex-1 flex items-center justify-center">
-                                  <p className="text-xs text-slate-500 text-center py-8">
-                                    Awaiting analysis...
-                                  </p>
-                                </div>
-                              );
-                            }
-
-                            return (
-                              <>
-                                {/* Quick Summary */}
-                                <div className="flex-1 space-y-3 mb-4">
-                                  <div className="flex items-center gap-2">
-                                    <CheckCircle className="w-3.5 h-3.5 text-blue-400" />
-                                    <span className="text-xs text-slate-400">
-                                      Strategic Planning Complete
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <CheckCircle className="w-3.5 h-3.5 text-amber-400" />
-                                    <span className="text-xs text-slate-400">
-                                      High-Recall Execution Complete
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                                    <span className="text-xs text-slate-400">
-                                      Clinical Adjudication Complete
-                                    </span>
-                                  </div>
-
-                                  {/* Preview of final finding */}
-                                  <div className="mt-4 pt-4 border-t border-white/5">
-                                    <p className="text-xs font-bold text-slate-400 mb-2">
-                                      Final Assessment:
-                                    </p>
-                                    <p className="text-sm text-slate-300 leading-relaxed line-clamp-3">
-                                      {imgReport.internal_logic ||
-                                        "Analysis in progress..."}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                {/* View Full Analysis Button */}
-                                <button
-                                  onClick={() => setShowImagingModal(true)}
-                                  className="w-full py-2.5 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/30 rounded-lg text-xs font-bold text-blue-400 transition-all flex items-center justify-center gap-2 group"
-                                >
-                                  <Maximize2 className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
-                                  View Full Analysis
-                                </button>
-                              </>
-                            );
-                          })()}
-                        </div>
-                      </div>
-
-                      {/* ========== CARD 2: ACOUSTIC SIGNATURE ========== */}
-                      <div className="bg-[#151b26] border border-[#2a3441] hover:border-emerald-500/30 rounded-2xl shadow-lg transition-all duration-300">
-                        <div className="p-5 flex flex-col h-full">
-                          {/* Card Header */}
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
-                                <Volume2 className="w-5 h-5 text-emerald-400" />
-                              </div>
-                              <div>
-                                <h4 className="text-sm font-bold text-white">
-                                  Acoustic Analysis
-                                </h4>
-                                <p className="text-xs text-slate-400">
-                                  Auscultation findings
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Audio Visualization */}
-                          <div className="bg-[#0a0e14] rounded-xl p-4 border border-[#2a3441] mb-4">
-                            {audioFile ? (
-                              <div className="space-y-4">
-                                {/* Waveform */}
-                                <div className="h-16 flex items-end gap-1">
-                                  {[...Array(32)].map((_, i) => (
-                                    <div
-                                      key={i}
-                                      className={`flex-1 rounded-t transition-all duration-300 ${
-                                        isAudioPlaying
-                                          ? "bg-emerald-500/50"
-                                          : "bg-emerald-500/20"
-                                      }`}
-                                      style={{
-                                        height: `${20 + Math.random() * 80}%`,
-                                        animationDelay: `${i * 0.03}s`,
-                                      }}
-                                    />
-                                  ))}
-                                </div>
-
-                                {/* Audio Controls */}
-                                <div className="flex items-center gap-3">
-                                  <button
-                                    className="w-10 h-10 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 flex items-center justify-center border border-emerald-500/30 transition-colors"
-                                    onClick={() =>
-                                      setIsAudioPlaying(!isAudioPlaying)
-                                    }
-                                  >
-                                    {isAudioPlaying ? (
-                                      <Pause className="w-4 h-4 text-emerald-400" />
-                                    ) : (
-                                      <Play className="w-4 h-4 text-emerald-400 ml-0.5" />
-                                    )}
-                                  </button>
-                                  <div className="flex-1">
-                                    <audio
-                                      controls
-                                      className="w-full h-8 opacity-60"
-                                      src={URL.createObjectURL(audioFile)}
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="text-center py-8 opacity-30">
-                                <Volume2 className="w-12 h-12 mb-2 text-slate-600 mx-auto" />
-                                <p className="text-xs font-medium text-slate-500">
-                                  No audio available
-                                </p>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Acoustic Findings */}
-                          <div className="flex-1 space-y-3 overflow-y-auto max-h-[300px]">
-                            {analysisResult?.agent_reports
-                              .find((a) => a.agent_name === "acoustics")
-                              ?.claims.map((claim, i) => (
-                                <div
-                                  key={i}
-                                  className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3"
-                                >
-                                  <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs font-bold text-emerald-400">
-                                      Finding {i + 1}
-                                    </span>
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-16 h-1.5 bg-emerald-500/20 rounded-full overflow-hidden">
-                                        <div
-                                          className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                                          style={{
-                                            width: `${claim.confidence * 100}%`,
-                                          }}
-                                        ></div>
-                                      </div>
-                                      <span className="text-xs font-medium text-emerald-400">
-                                        {Math.round(claim.confidence * 100)}%
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <p className="text-xs text-slate-300 leading-relaxed">
-                                    {claim.value}
-                                  </p>
-                                </div>
-                              ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* ========== CARD 3: PATIENT HISTORY ========== */}
-                      <div className="bg-[#151b26] border border-[#2a3441] hover:border-amber-500/30 rounded-2xl shadow-lg transition-all duration-300">
-                        <div className="p-5 flex flex-col h-full">
-                          {/* Card Header */}
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
-                                <ClipboardList className="w-5 h-5 text-amber-400" />
-                              </div>
-                              <div>
-                                <h4 className="text-sm font-bold text-white">
-                                  Patient History
-                                </h4>
-                                <p className="text-xs text-slate-400">
-                                  Extracted findings
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* History Items */}
-                          <div className="flex-1 space-y-2 overflow-y-auto max-h-[500px]">
-                            {analysisResult?.agent_reports
-                              .find((a) => a.agent_name === "history")
-                              ?.claims.map((claim, i) => (
-                                <div
-                                  key={i}
-                                  className="bg-[#0a0e14] border border-amber-500/20 rounded-lg p-3 hover:border-amber-500/40 transition-colors"
-                                >
-                                  <div className="flex items-start gap-3">
-                                    <div className="w-6 h-6 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                      <span className="text-xs font-bold text-amber-400">
-                                        {i + 1}
-                                      </span>
-                                    </div>
-                                    <p className="text-xs text-slate-300 leading-relaxed flex-1">
-                                      {claim.value}
-                                    </p>
-                                  </div>
-                                </div>
-                              ))}
-                          </div>
-                        </div>
-                      </div>
+                      <HistoryCard analysisResult={analysisResult} />
                     </div>
                   </div>
                 )}
-
                 {/* ==================== END OF EVIDENCE TAB ==================== */}
                 {activeTab === "audit" && (
                   <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-top-4 duration-500">
                     {/* Logic Node Trace */}
                     <div className="grid grid-cols-1 gap-4">
                       {analysisResult.reasoning_trace?.map((step, i) => (
-                        <div
+                        <LogicNode
                           key={i}
-                          className="flex gap-6 p-6 bg-[#151b26] border border-[#2a3441] rounded-2xl items-start relative group hover:bg-[#1a212d] transition-all"
-                        >
-                          <div className="absolute left-9 top-14 bottom-0 w-px bg-[#2a3441] group-last:hidden" />
-                          <div className="shrink-0 w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-[11px] font-black text-blue-500 relative z-10 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                            {i + 1}
-                          </div>
-                          <div className="pt-1 space-y-2">
-                            <p className="text-xs text-slate-200 leading-relaxed font-medium">
-                              {step}
-                            </p>
-                            <div className="flex gap-4">
-                              <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">
-                                Validated Logic Node
-                              </span>
-                            </div>
-                          </div>
-                        </div>
+                          step={step}
+                          index={i}
+                          isLast={
+                            i ===
+                            (analysisResult.reasoning_trace?.length || 0) - 1
+                          }
+                        />
                       ))}
                     </div>
 
                     {/* Integrated Audit Markdown */}
                     {analysisResult.audit_markdown && (
-                      <div className="p-8 bg-emerald-500/5 border border-emerald-500/20 rounded-3xl relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-8 opacity-10">
-                          <CheckCircle className="w-16 h-16 text-emerald-500" />
-                        </div>
-                        <h4 className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3">
-                          <Stethoscope className="w-4 h-4" /> Clinical Audit Log
-                        </h4>
-                        <div className="text-sm text-slate-300 leading-relaxed italic font-medium">
-                          {analysisResult.audit_markdown}
-                        </div>
-                      </div>
+                      <AuditLogBlock content={analysisResult.audit_markdown} />
                     )}
 
                     {/* Internal Thought Process */}
                     {analysisResult.thought_process && (
-                      <div className="p-8 bg-blue-500/5 border border-blue-500/20 rounded-3xl relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-8 opacity-10">
-                          <Activity className="w-16 h-16 text-blue-500" />
-                        </div>
-                        <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3">
-                          <Layers className="w-4 h-4" /> Internal Analysis Logic
-                        </h4>
-                        <div className="text-xs text-slate-400 whitespace-pre-wrap leading-relaxed italic font-medium max-h-[400px] overflow-y-auto pr-4 scrollbar-thin">
-                          {analysisResult.thought_process}
-                        </div>
-                      </div>
+                      <ThoughtProcessBlock
+                        content={analysisResult.thought_process}
+                      />
                     )}
                   </div>
                 )}

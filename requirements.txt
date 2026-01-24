@@ -8,4 +8,5 @@ huggingface_hub
 ollama
 plotly>=5.0
 python-multipart
+react-markdown
 
