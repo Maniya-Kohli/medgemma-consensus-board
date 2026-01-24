@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
+
 import {
   Activity,
   FileText,
@@ -11,6 +12,7 @@ import {
   Menu,
   X,
   ChevronRight,
+  ChevronDown,
   Play,
   RotateCcw,
   Upload,
@@ -29,6 +31,7 @@ import {
   Search,
   ExternalLink,
   MessageSquare,
+  Pause,
 } from "lucide-react";
 
 /**
@@ -80,10 +83,43 @@ interface AnalysisResult {
   recommended_data_actions: string[];
   reasoning_trace: string[];
   limitations: string[];
-  agent_reports: AgentReport[];
+  agent_reports: (AgentReport | VisionReport)[];
   audit_markdown?: string;
   thought_process?: string;
   matrix_details?: Record<string, { description: string; findings: string[] }>;
+}
+// Add these to your interfaces
+/**
+ * Aligned with backend VisionReport(BaseModel)
+ * Mirrors the Plan -> Execute -> Check Agentic Loop
+ */
+interface VisionReport {
+  case_id: string;
+  agent_name: string; // Default: "imaging"
+  model: string; // Default: "MedGemma-2b-Vision"
+
+  /** * Required for ConsensusOutput validation.
+   * Even if empty, this must exist to prevent Pydantic crashes.
+   */
+  claims: Array<{
+    label: string;
+    value: any;
+    [key: string]: any; // Allows for flexible metadata
+  }>;
+
+  // --- Multi-Phase Reasoning Traces ---
+
+  /** Phase 1: Strategic Plan */
+  draft_findings: string;
+
+  /** Phase 2: Sensitive Analysis (High Recall/Noise) */
+  supervisor_critique: string;
+
+  /** Phase 3: Final Clinical Consensus */
+  internal_logic: string;
+
+  /** Status tracker: 'complete' | 'failed' | 'pending' */
+  analysis_status: string;
 }
 
 interface CaseItem {
@@ -118,10 +154,123 @@ const SEVERITY_MAP: Record<
     border: "border-rose-500/20",
   },
 };
+const AgenticThinkingTrace = ({ report }: { report: VisionReport }) => {
+  return (
+    <div className="mt-2 space-y-2">
+      <h5 className="text-[8px] font-black text-slate-500 uppercase tracking-widest ml-1">
+        Reasoning Trace
+      </h5>
+
+      <div className="relative pl-4 space-y-3 before:absolute before:left-1 before:top-2 before:bottom-2 before:w-px before:bg-slate-800">
+        {/* PHASE 1: THE PLAN */}
+        <div className="relative">
+          <div className="absolute -left-[17px] top-1 w-2 h-2 rounded-full bg-blue-500/40 border border-blue-500" />
+          <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">
+            Phase 1: Strategic Planning
+          </p>
+          <p className="text-[10px] text-slate-500 line-clamp-2 italic">
+            {report.draft_findings}
+          </p>
+        </div>
+
+        {/* PHASE 2: SENSITIVE ANALYSIS */}
+        <div className="relative">
+          <div className="absolute -left-[17px] top-1 w-2 h-2 rounded-full bg-amber-500/40 border border-amber-500" />
+          <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">
+            Phase 2: High-Recall Execution
+          </p>
+          <p className="text-[10px] text-slate-500 line-clamp-2 italic">
+            {report.supervisor_critique}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// const AgenticThinkingTrace = ({ report }: { report: VisionReport }) => {
+//   const [isExpanded, setIsExpanded] = useState(false);
+
+//   // JavaScript uses .trim(), not .strip()
+//   const cleanText = (text: string) => text?.trim() || "No data provided";
+
+//   return (
+//     <div className="mt-4 border-t border-white/5 pt-4">
+//       <button
+//         onClick={() => setIsExpanded(!isExpanded)}
+//         className="w-full flex items-center justify-between p-2.5 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/20 rounded-xl transition-all group"
+//       >
+//         <div className="flex items-center gap-2">
+//           <div className="relative">
+//             <Activity className="w-3.5 h-3.5 text-blue-400 group-hover:animate-pulse" />
+//             <div className="absolute inset-0 bg-blue-400/20 blur-sm rounded-full" />
+//           </div>
+//           <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">
+//             Agentic Reasoning Trace
+//           </span>
+//         </div>
+//         <ChevronRight
+//           className={`w-3.5 h-3.5 text-blue-400 transition-transform duration-300 ${isExpanded ? "rotate-90" : ""}`}
+//         />
+//       </button>
+
+//       {isExpanded && (
+//         <div className="mt-3 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+//           {/* PHASE 1: PERCEPTION */}
+//           <div className="relative pl-6 border-l border-slate-800">
+//             <div className="absolute -left-1.5 top-0 w-3 h-3 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
+//               <div className="w-1 h-1 rounded-full bg-slate-500" />
+//             </div>
+//             <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">
+//               Step 1: Perception Trace
+//             </p>
+//             <div className="space-y-2">
+//               {/* Displaying the Draft Findings stored in the report object */}
+//               <p className="text-[10px] text-slate-400 leading-relaxed italic bg-white/5 p-2 rounded-lg border border-white/5 whitespace-pre-wrap">
+//                 {" "}
+//                 {cleanText(report.draft_findings)}
+//               </p>
+//             </div>
+//           </div>
+
+//           {/* PHASE 2: REFLECTION */}
+//           <div className="relative pl-6 border-l border-blue-500/30">
+//             <div className="absolute -left-1.5 top-0 w-3 h-3 rounded-full bg-blue-500/20 border border-blue-500/50 flex items-center justify-center">
+//               <ShieldAlert className="w-2 h-2 text-blue-400" />
+//             </div>
+//             <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">
+//               Step 2: Recursive Critique
+//             </p>
+//             <p className="text-[10px] text-blue-100/70 leading-relaxed bg-blue-500/5 p-2 rounded-lg border border-blue-500/10">
+//               {cleanText(report.supervisor_critique)}
+//             </p>
+//           </div>
+
+//           {/* PHASE 3: ADJUDICATION */}
+//           <div className="relative pl-6 border-l border-emerald-500/30">
+//             <div className="absolute -left-1.5 top-0 w-3 h-3 rounded-full bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center">
+//               <CheckCircle className="w-2 h-2 text-emerald-400" />
+//             </div>
+//             <p className="text-[8px] font-black text-emerald-400 uppercase tracking-widest mb-1">
+//               Step 3: Clinical Adjudication
+//             </p>
+//             <p className="text-[10px] text-emerald-100/60 leading-relaxed font-mono bg-emerald-500/5 p-2 rounded-lg border border-emerald-500/10">
+//               {cleanText(report.internal_logic)}
+//             </p>
+//           </div>
+//         </div>
+//       )}
+//     </div>
+//   );
+// };
 
 // --- Main Application ---
 
 export default function App() {
+  const [showImagingModal, setShowImagingModal] = useState(false);
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [selectedPhase, setSelectedPhase] = useState<string | null>(null);
+
   const [selectedCase, setSelectedCase] = useState<string>("CASE_A-2401");
   const [sessionId, setSessionId] = useState(
     `UPLOAD-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
@@ -404,6 +553,148 @@ export default function App() {
       </div>
     );
   };
+  const ImagingAnalysisModal = () => {
+    if (!showImagingModal || !analysisResult) return null;
+
+    const imgReport = analysisResult.agent_reports.find(
+      (a) => a.agent_name === "imaging",
+    ) as VisionReport | undefined;
+
+    if (!imgReport) return null;
+
+    const phases = [
+      {
+        id: "phase1",
+        title: "Strategic Planning",
+        subtitle: "Initial Assessment",
+        content: imgReport.draft_findings,
+        color: "blue",
+        icon: "📋",
+      },
+      {
+        id: "phase2",
+        title: "High-Recall Execution",
+        subtitle: "Detailed Review",
+        content: imgReport.supervisor_critique,
+        color: "amber",
+        icon: "🔍",
+      },
+      {
+        id: "phase3",
+        title: "Clinical Adjudication",
+        subtitle: "Final Consensus",
+        content: imgReport.internal_logic,
+        color: "emerald",
+        icon: "✓",
+      },
+    ];
+
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+        <div
+          className="absolute inset-0 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300"
+          onClick={() => setShowImagingModal(false)}
+        />
+        <div className="relative w-full max-w-4xl bg-[#151b26] border border-blue-500/30 rounded-2xl shadow-2xl max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-blue-600/20 to-transparent p-6 border-b border-[#2a3441] flex justify-between items-start sticky top-0 z-10 backdrop-blur-sm">
+            <div className="flex items-center gap-3">
+              <ImageIcon className="w-5 h-5 text-blue-400" />
+              <div>
+                <h3 className="text-sm font-black text-white uppercase tracking-widest">
+                  Radiographic Analysis - Full Report
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Complete multi-phase evaluation
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowImagingModal(false)}
+              className="p-1 hover:bg-white/10 rounded-lg transition-colors text-slate-400"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
+            {/* X-Ray Image */}
+            {xrayFile && (
+              <div className="aspect-video bg-[#0a0e14] rounded-xl overflow-hidden border border-[#2a3441] mb-6">
+                <img
+                  src={URL.createObjectURL(xrayFile)}
+                  className="w-full h-full object-contain"
+                  alt="X-Ray Full View"
+                />
+              </div>
+            )}
+
+            {/* Analysis Phases */}
+            <div className="space-y-4">
+              {phases.map((phase) => (
+                <div
+                  key={phase.id}
+                  className={`border border-${phase.color}-500/30 bg-${phase.color}-500/5 rounded-xl p-5`}
+                >
+                  <div className="flex items-center gap-3 mb-4">
+                    <div
+                      className={`w-12 h-12 rounded-xl bg-${phase.color}-500/10 flex items-center justify-center text-2xl`}
+                    >
+                      {phase.icon}
+                    </div>
+                    <div>
+                      <h5
+                        className={`text-sm font-bold text-${phase.color}-400`}
+                      >
+                        {phase.title}
+                      </h5>
+                      <p className="text-xs text-slate-400">{phase.subtitle}</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
+                    {phase.content || "No data available"}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {/* Case Metadata */}
+            <div className="mt-6 bg-slate-500/5 p-5 rounded-xl border border-slate-500/10">
+              <div className="flex items-center gap-2 mb-3">
+                <FileText className="w-4 h-4 text-slate-400" />
+                <span className="text-xs font-black text-slate-400 uppercase tracking-wider">
+                  Analysis Metadata
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span className="text-slate-500">Model:</span>
+                  <span className="text-slate-300 ml-2">{imgReport.model}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Status:</span>
+                  <span className="text-emerald-400 ml-2">
+                    {imgReport.analysis_status}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="p-4 bg-[#0a0e14]/50 border-t border-[#2a3441] flex justify-end sticky bottom-0 backdrop-blur-sm">
+            <button
+              onClick={() => setShowImagingModal(false)}
+              className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-black uppercase tracking-widest transition-all"
+            >
+              Close Analysis
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const VerdictModal = () => {
     if (!showFullVerdict || !analysisResult) return null;
@@ -592,11 +883,15 @@ export default function App() {
       </div>
     );
   };
+  const togglePhase = (phaseId: string) => {
+    setSelectedPhase(selectedPhase === phaseId ? null : phaseId);
+  };
 
   return (
     <div className="min-h-screen bg-[#0a0e14] text-slate-200 flex overflow-hidden selection:bg-blue-500/30">
       <CellDetailModal />
       <VerdictModal />
+      <ImagingAnalysisModal />
       <DirectivesModal />
 
       <aside
@@ -1044,134 +1339,279 @@ export default function App() {
                     <ConfidenceHeatmap />
                   </div>
                 )}
+                {/* ==================== EVIDENCE TAB ==================== */}
 
                 {activeTab === "evidence" && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in slide-in-from-right-4 duration-500">
-                    <div className="bg-[#151b26] border border-[#2a3441] rounded-2xl p-5 shadow-lg group hover:border-blue-500/30 transition-colors">
-                      <div className="flex items-center gap-2 mb-4">
-                        <ImageIcon className="w-4 h-4 text-blue-400" />
-                        <h4 className="text-[10px] font-black text-white uppercase tracking-widest">
-                          Radiographic Input
-                        </h4>
-                      </div>
-                      <div className="aspect-square bg-[#0a0e14] rounded-xl flex items-center justify-center border border-[#2a3441] relative overflow-hidden">
-                        {xrayFile ? (
-                          <img
-                            src={URL.createObjectURL(xrayFile)}
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                            alt="Imaging"
-                          />
-                        ) : (
-                          <div className="opacity-10 text-center flex flex-col items-center">
-                            <ImageIcon className="w-12 h-12 mb-2" />
-                            <p className="text-[10px] font-bold uppercase">
-                              Awaiting Visual
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                      <div className="mt-4 pt-4 border-t border-white/5">
-                        {analysisResult.agent_reports
-                          .find((a) => a.agent_name === "imaging")
-                          ?.claims.map((c, i) => (
-                            <div key={i} className="flex flex-col gap-1.5">
-                              <div className="flex justify-between items-center">
-                                <span className="text-[8px] font-black text-blue-500 uppercase">
-                                  Imaging Verdict
-                                </span>
-                                <span className="text-[9px] font-bold text-slate-500">
-                                  {Math.round(c.confidence * 100)}% Conf
-                                </span>
+                  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {/* Cards Grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      {/* ========== CARD 1: RADIOGRAPHIC INPUT ========== */}
+                      <div className="bg-[#151b26] border border-[#2a3441] hover:border-blue-500/30 rounded-2xl shadow-lg transition-all duration-300">
+                        <div className="p-5 flex flex-col h-full">
+                          {/* Card Header */}
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+                                <ImageIcon className="w-5 h-5 text-blue-400" />
                               </div>
-                              <p className="text-[11px] text-slate-300 leading-relaxed italic">
-                                "{c.value}"
-                              </p>
+                              <div>
+                                <h4 className="text-sm font-bold text-white">
+                                  Radiographic Analysis
+                                </h4>
+                                <p className="text-xs text-slate-400">
+                                  Multi-phase evaluation
+                                </p>
+                              </div>
                             </div>
-                          ))}
-                      </div>
-                    </div>
+                            <span className="text-xs font-bold px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                              Verified
+                            </span>
+                          </div>
 
-                    <div className="bg-[#151b26] border border-[#2a3441] rounded-2xl p-5 shadow-lg group hover:border-emerald-500/30 transition-colors">
-                      <div className="flex items-center gap-2 mb-4">
-                        <Volume2 className="w-4 h-4 text-emerald-400" />
-                        <h4 className="text-[10px] font-black text-white uppercase tracking-widest">
-                          Acoustic Signature
-                        </h4>
+                          {/* X-Ray Preview */}
+                          <div className="aspect-square bg-[#0a0e14] rounded-xl flex items-center justify-center border border-[#2a3441] relative overflow-hidden group mb-4">
+                            {xrayFile ? (
+                              <img
+                                src={URL.createObjectURL(xrayFile)}
+                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                alt="X-Ray"
+                              />
+                            ) : (
+                              <div className="text-center flex flex-col items-center opacity-30">
+                                <ImageIcon className="w-16 h-16 mb-3 text-slate-600" />
+                                <p className="text-xs font-medium text-slate-500">
+                                  No imaging uploaded
+                                </p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Analysis Summary */}
+                          {(() => {
+                            const imgReport =
+                              analysisResult?.agent_reports.find(
+                                (a) => a.agent_name === "imaging",
+                              ) as VisionReport | undefined;
+
+                            if (!imgReport) {
+                              return (
+                                <div className="flex-1 flex items-center justify-center">
+                                  <p className="text-xs text-slate-500 text-center py-8">
+                                    Awaiting analysis...
+                                  </p>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <>
+                                {/* Quick Summary */}
+                                <div className="flex-1 space-y-3 mb-4">
+                                  <div className="flex items-center gap-2">
+                                    <CheckCircle className="w-3.5 h-3.5 text-blue-400" />
+                                    <span className="text-xs text-slate-400">
+                                      Strategic Planning Complete
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <CheckCircle className="w-3.5 h-3.5 text-amber-400" />
+                                    <span className="text-xs text-slate-400">
+                                      High-Recall Execution Complete
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span className="text-xs text-slate-400">
+                                      Clinical Adjudication Complete
+                                    </span>
+                                  </div>
+
+                                  {/* Preview of final finding */}
+                                  <div className="mt-4 pt-4 border-t border-white/5">
+                                    <p className="text-xs font-bold text-slate-400 mb-2">
+                                      Final Assessment:
+                                    </p>
+                                    <p className="text-sm text-slate-300 leading-relaxed line-clamp-3">
+                                      {imgReport.internal_logic ||
+                                        "Analysis in progress..."}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {/* View Full Analysis Button */}
+                                <button
+                                  onClick={() => setShowImagingModal(true)}
+                                  className="w-full py-2.5 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/30 rounded-lg text-xs font-bold text-blue-400 transition-all flex items-center justify-center gap-2 group"
+                                >
+                                  <Maximize2 className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                                  View Full Analysis
+                                </button>
+                              </>
+                            );
+                          })()}
+                        </div>
                       </div>
-                      <div className="bg-[#0a0e14] rounded-xl p-5 border border-[#2a3441] h-32 flex flex-col justify-center space-y-4 relative overflow-hidden">
-                        {audioFile ? (
-                          <>
-                            <div className="h-10 flex items-center gap-1">
-                              {[...Array(24)].map((_, i) => (
+
+                      {/* ========== CARD 2: ACOUSTIC SIGNATURE ========== */}
+                      <div className="bg-[#151b26] border border-[#2a3441] hover:border-emerald-500/30 rounded-2xl shadow-lg transition-all duration-300">
+                        <div className="p-5 flex flex-col h-full">
+                          {/* Card Header */}
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+                                <Volume2 className="w-5 h-5 text-emerald-400" />
+                              </div>
+                              <div>
+                                <h4 className="text-sm font-bold text-white">
+                                  Acoustic Analysis
+                                </h4>
+                                <p className="text-xs text-slate-400">
+                                  Auscultation findings
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Audio Visualization */}
+                          <div className="bg-[#0a0e14] rounded-xl p-4 border border-[#2a3441] mb-4">
+                            {audioFile ? (
+                              <div className="space-y-4">
+                                {/* Waveform */}
+                                <div className="h-16 flex items-end gap-1">
+                                  {[...Array(32)].map((_, i) => (
+                                    <div
+                                      key={i}
+                                      className={`flex-1 rounded-t transition-all duration-300 ${
+                                        isAudioPlaying
+                                          ? "bg-emerald-500/50"
+                                          : "bg-emerald-500/20"
+                                      }`}
+                                      style={{
+                                        height: `${20 + Math.random() * 80}%`,
+                                        animationDelay: `${i * 0.03}s`,
+                                      }}
+                                    />
+                                  ))}
+                                </div>
+
+                                {/* Audio Controls */}
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    className="w-10 h-10 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 flex items-center justify-center border border-emerald-500/30 transition-colors"
+                                    onClick={() =>
+                                      setIsAudioPlaying(!isAudioPlaying)
+                                    }
+                                  >
+                                    {isAudioPlaying ? (
+                                      <Pause className="w-4 h-4 text-emerald-400" />
+                                    ) : (
+                                      <Play className="w-4 h-4 text-emerald-400 ml-0.5" />
+                                    )}
+                                  </button>
+                                  <div className="flex-1">
+                                    <audio
+                                      controls
+                                      className="w-full h-8 opacity-60"
+                                      src={URL.createObjectURL(audioFile)}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-center py-8 opacity-30">
+                                <Volume2 className="w-12 h-12 mb-2 text-slate-600 mx-auto" />
+                                <p className="text-xs font-medium text-slate-500">
+                                  No audio available
+                                </p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Acoustic Findings */}
+                          <div className="flex-1 space-y-3 overflow-y-auto max-h-[300px]">
+                            {analysisResult?.agent_reports
+                              .find((a) => a.agent_name === "acoustics")
+                              ?.claims.map((claim, i) => (
                                 <div
                                   key={i}
-                                  className="flex-1 bg-emerald-500/30 rounded-full animate-pulse"
-                                  style={{
-                                    height: `${20 + Math.random() * 80}%`,
-                                    animationDelay: `${i * 0.05}s`,
-                                  }}
-                                />
+                                  className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3"
+                                >
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xs font-bold text-emerald-400">
+                                      Finding {i + 1}
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-16 h-1.5 bg-emerald-500/20 rounded-full overflow-hidden">
+                                        <div
+                                          className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                                          style={{
+                                            width: `${claim.confidence * 100}%`,
+                                          }}
+                                        ></div>
+                                      </div>
+                                      <span className="text-xs font-medium text-emerald-400">
+                                        {Math.round(claim.confidence * 100)}%
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <p className="text-xs text-slate-300 leading-relaxed">
+                                    {claim.value}
+                                  </p>
+                                </div>
                               ))}
-                            </div>
-                            <audio
-                              controls
-                              className="w-full h-8 opacity-40 scale-90"
-                              src={URL.createObjectURL(audioFile)}
-                            />
-                          </>
-                        ) : (
-                          <div className="opacity-10 text-center flex flex-col items-center">
-                            <Volume2 className="w-12 h-12 mb-2" />
-                            <p className="text-[10px] font-bold uppercase">
-                              No Audio Log
-                            </p>
                           </div>
-                        )}
+                        </div>
                       </div>
-                      <div className="mt-4 pt-4 border-t border-white/5">
-                        {analysisResult.agent_reports
-                          .find((a) => a.agent_name === "acoustics")
-                          ?.claims.map((c, i) => (
-                            <div key={i} className="flex flex-col gap-1.5">
-                              <div className="flex justify-between items-center">
-                                <span className="text-[8px] font-black text-emerald-500 uppercase">
-                                  Acoustic Verdict
-                                </span>
-                                <span className="text-[9px] font-bold text-slate-500">
-                                  {Math.round(c.confidence * 100)}% Conf
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-slate-300 leading-relaxed italic">
-                                "{c.value}"
-                              </p>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
 
-                    <div className="bg-[#151b26] border border-[#2a3441] rounded-2xl p-5 shadow-lg flex flex-col group hover:border-amber-500/30 transition-colors">
-                      <div className="flex items-center gap-2 mb-4">
-                        <ClipboardList className="w-4 h-4 text-amber-400" />
-                        <h4 className="text-[10px] font-black text-white uppercase tracking-widest">
-                          Extracted History
-                        </h4>
-                      </div>
-                      <div className="flex-1 bg-[#0a0e14] rounded-xl p-4 border border-[#2a3441] text-[11px] text-slate-300 leading-relaxed overflow-y-auto max-h-[280px]">
-                        {analysisResult.agent_reports
-                          .find((a) => a.agent_name === "history")
-                          ?.claims.map((c, i) => (
-                            <div
-                              key={i}
-                              className="mb-4 pb-4 border-b border-white/5 last:border-0 last:pb-0"
-                            >
-                              <p className="text-slate-400">{c.value}</p>
+                      {/* ========== CARD 3: PATIENT HISTORY ========== */}
+                      <div className="bg-[#151b26] border border-[#2a3441] hover:border-amber-500/30 rounded-2xl shadow-lg transition-all duration-300">
+                        <div className="p-5 flex flex-col h-full">
+                          {/* Card Header */}
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
+                                <ClipboardList className="w-5 h-5 text-amber-400" />
+                              </div>
+                              <div>
+                                <h4 className="text-sm font-bold text-white">
+                                  Patient History
+                                </h4>
+                                <p className="text-xs text-slate-400">
+                                  Extracted findings
+                                </p>
+                              </div>
                             </div>
-                          ))}
+                          </div>
+
+                          {/* History Items */}
+                          <div className="flex-1 space-y-2 overflow-y-auto max-h-[500px]">
+                            {analysisResult?.agent_reports
+                              .find((a) => a.agent_name === "history")
+                              ?.claims.map((claim, i) => (
+                                <div
+                                  key={i}
+                                  className="bg-[#0a0e14] border border-amber-500/20 rounded-lg p-3 hover:border-amber-500/40 transition-colors"
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <div className="w-6 h-6 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                      <span className="text-xs font-bold text-amber-400">
+                                        {i + 1}
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-slate-300 leading-relaxed flex-1">
+                                      {claim.value}
+                                    </p>
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
                 )}
 
+                {/* ==================== END OF EVIDENCE TAB ==================== */}
                 {activeTab === "audit" && (
                   <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-top-4 duration-500">
                     {/* Logic Node Trace */}

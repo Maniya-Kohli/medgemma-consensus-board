@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Dict, List, Union
 from pydantic import BaseModel, Field
 
 
@@ -32,6 +32,19 @@ class AgentReport(BaseModel):
     requested_data: list[str] = Field(default_factory=list)
 
 
+class VisionReport(BaseModel):
+    case_id: str
+    agent_name: str = "imaging"
+    model: str = "MedGemma-2b-Vision"
+    claims: List[Dict[str, Any]] = Field(default_factory=list)
+
+    # Reasoning Traces from the Agentic Loop
+    draft_findings: str      # Phase 1: Strategic Plan
+    supervisor_critique: str # Phase 2: Sensitive Analysis (High Recall/Noise)
+    internal_logic: str      # Phase 3: Final Clinical Consensus
+    
+    analysis_status: str = "complete"
+
 class CaseInput(BaseModel):
     case_id: str
     # In Day 1 we pass paths/ids; later you'll pass uploaded bytes and store to disk
@@ -56,7 +69,7 @@ class ConsensusOutput(BaseModel):
     recommended_data_actions: list[str] = Field(default_factory=list)
     reasoning_trace: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
-    agent_reports: list[AgentReport]
+    agent_reports: List[Union[VisionReport, AgentReport]] 
     audit_markdown: Optional[str] = None
     thought_process : Optional[str] = None
     
