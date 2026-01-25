@@ -44,6 +44,7 @@ class VisionReport(BaseModel):
     internal_logic: str      # Phase 3: Final Clinical Consensus
     
     analysis_status: str = "complete"
+    data_for_consensus: Optional[str] = "No additional rationale provided." # Added this
 
 class CaseInput(BaseModel):
     case_id: str

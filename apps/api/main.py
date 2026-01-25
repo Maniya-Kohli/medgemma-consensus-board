@@ -264,6 +264,7 @@ async def call_vision_agent(client: httpx.AsyncClient, case_id: str, note_text: 
         data = response.json()
         metadata = data.get("agent_metadata", {})
         final_finding = data.get("finding", "No consensus reached.")
+        data_for_consensus = data.get("data_for_consensus")
 
         # Console Logs for Agentic Traces
         print(f"[🧠 PHASE 1 - PLAN] Strategy generated.")
@@ -271,7 +272,7 @@ async def call_vision_agent(client: httpx.AsyncClient, case_id: str, note_text: 
         print(f"[⚖️  PHASE 3 - CHECK] Consensus achieved.")
         print(f"[✅ SUCCESS] Report constructed for {case_id}\n")
 
-        return VisionReport(
+        res = VisionReport(
             case_id=case_id,
             # Phase 1: Strategic Plan
             draft_findings=metadata.get("plan", "No strategy generated."),
@@ -279,8 +280,12 @@ async def call_vision_agent(client: httpx.AsyncClient, case_id: str, note_text: 
             supervisor_critique=metadata.get("recall_data", "No sensitive data captured."),
             # Phase 3: Final Clinical Consensus
             internal_logic=final_finding,
+            data_for_consensus = data_for_consensus,
             analysis_status="complete"
         )
+
+        print('VISION REPORT : ' , res)
+        return res
 
     except Exception as e:
         print(f"[💥 CRASH] Agentic Loop Failure: {str(e)}")
@@ -425,7 +430,7 @@ async def run_case(case: CaseInput):
 
     # Prepare summaries for the Multimodal Consensus stage
    # Use the claims if available, fallback to draft findings to prevent "silent" agents
-    img_summary = imaging.internal_logic if imaging.analysis_status == "complete" else "Visual analysis failed."
+    img_summary = imaging.data_for_consensus
     aud_txt = acoustics.claims[0].value if acoustics.claims else "No Data"
     hist_txt = ", ".join([c.value for c in history.claims])
 
