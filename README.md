@@ -1,12 +1,12 @@
-# 🛡️ AEGis: MedGemma Clinical Consensus Board
+# 🛡️ Momo: MedGemma Clinical Consensus Board
 
-**AEGis** (Agentic Evaluation & Gathersystem) is an advanced medical AI framework designed to resolve discrepancies between clinical modalities. By utilizing an **agentic multi-phase reasoning loop**, the system adjudicates evidence from **Radiology (X-Rays)**, **Bio-Acoustics (Lungs/Heart sounds)**, and **Patient History** to provide a unified diagnostic consensus.
+**Momo** (Agentic Evaluation & Gathersystem) is an advanced medical AI framework designed to resolve discrepancies between clinical modalities. By utilizing an **agentic multi-phase reasoning loop**, the system adjudicates evidence from **Radiology (X-Rays)**, **Bio-Acoustics (Lungs/Heart sounds)**, and **Patient History** to provide a unified diagnostic consensus.
 
 ---
 
 ## 🏗️ System Architecture & Multi-Agent Logic
 
-AEGis operates as a **Hierarchical Multi-Agent System (MAS)** utilizing **Vertical Orchestration**. Specialized domain agents process raw multimodal data into high-level claims, which are then "handed up" to a Senior Adjudicator for final conflict resolution.
+Momo operates as a **Hierarchical Multi-Agent System (MAS)** utilizing **Vertical Orchestration**. Specialized domain agents process raw multimodal data into high-level claims, which are then "handed up" to a Senior Adjudicator for final conflict resolution.
 
 ### 🧠 Reasoning Framework: Multi-Phase CoT
 

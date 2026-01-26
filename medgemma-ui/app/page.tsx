@@ -36,7 +36,7 @@ import {
 } from "lucide-react";
 
 /**
- * AEGIS CLINICAL CONSENSUS BOARD - V3.5
+ * MOMO CLINICAL CONSENSUS BOARD - V3.5
  * Refinement: Equal button sizing, unified Directive colors, and Audit Markdown integration.
  */
 
@@ -1668,7 +1668,7 @@ export default function App() {
             </div>
             <div className="truncate">
               <h1 className="text-md font-bold text-white tracking-tight leading-tight">
-                Aegis Clinical
+                Momo Clinical
               </h1>
               <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest">
                 Neural Consensus
