@@ -1,113 +1,129 @@
-# 🛡️ Aegis Clinical: Multimodal AI Consensus
+# 🛡️ AEGis: MedGemma Clinical Consensus Board
 
-## 🚨 The Problem: "Siloed Signals"
-
-In high-pressure clinical environments, **burnout causes blindness**. A fatigued clinician might see a "Stable" Chest X-ray and discharge a patient, missing a subtle "Wheeze" in lung audio or a "Weight Loss" note buried in history.
-
-**Medical errors are the 3rd leading cause of death.** Many of these occur due to data disconnects—where critical signals are trapped in different silos.
-
-## 🛡️ Why "Aegis Clinical"?
-
-Named after the legendary shield of protection, **Aegis Clinical** acts as an automated "Safety Net" for healthcare providers. It serves as a clinical safeguard, employing specialized AI Agents to monitor distinct data streams (Vision, Audio, Text) and using a **Consensus Agent (MedGemma)** to shield patients from errors by detecting contradictions in real-time.
-
-## 💡 The Solution: Agentic Consensus
-
-- **If all agents agree:** The dashboard shows Green (Low Risk).
-- **If agents conflict (e.g., Vision says Healthy vs. Audio says Sick):** Aegis triggers a **RED ALERT**, forcing a critical "Second Look" before discharge.
-
-### Hybrid Multimodal AI for Clinical Discrepancy Detection
-
-**Consensus Board** is an agentic safety net designed to catch "hidden discrepancies" in clinical data. It uses a **Cloud-to-Edge** architecture to analyze three distinct streams—Imaging (Vision), Breath Sounds (Audio), and Clinical Notes (Text)—using Google's specialized health models.
-
-If a patient has a "Stable" X-ray but "New Crackles" in their audio and "Weight Loss" in their history, MedGemma triggers a **High Risk** alert, forcing a human second look before discharge.
+**AEGis** (Agentic Evaluation & Gathersystem) is an advanced medical AI framework designed to resolve discrepancies between clinical modalities. By utilizing an **agentic multi-phase reasoning loop**, the system adjudicates evidence from **Radiology (X-Rays)**, **Bio-Acoustics (Lungs/Heart sounds)**, and **Patient History** to provide a unified diagnostic consensus.
 
 ---
 
-## 🏗️ Hybrid Architecture
+## 🏗️ System Architecture & Multi-Agent Logic
 
-### 1. The "Brain" (Cloud / Google Colab)
+AEGis operates as a **Hierarchical Multi-Agent System (MAS)** utilizing **Vertical Orchestration**. Specialized domain agents process raw multimodal data into high-level claims, which are then "handed up" to a Senior Adjudicator for final conflict resolution.
 
-Running on T4 GPUs, this layer hosts the heavy-lifting models via a FastAPI server exposed through `ngrok`.
+### 🧠 Reasoning Framework: Multi-Phase CoT
 
-- **Visual Agent:** `google/medsiglip-448` analyzes Chest X-rays for pneumonia and stability.
-- **Acoustic Agent:** `google/hear-pytorch` processes lung audio into embeddings to detect wheezes or crackles.
-- **Consensus Moderator:** **MedGemma 2** (via manual tensor fusion) acts as the senior moderator, resolving contradictions between agents with robust JSON-prefilling logic.
+The system employs **Chain-of-Thought (CoT)** reasoning across its core agents to ensure clinical transparency.
 
-### 2. The "Heart" (Local API)
+- **Vision Agent Loop (Self-Correction CoT)**: Rather than a single pass, the Vision Agent follows a three-step internal monologue:
 
-A FastAPI backend (`apps/api/main.py`) that orchestrates the workflow:
+1. **Strategic Planning**: Formulates an observation plan based on clinical context (e.g., identifying primary anatomical regions of interest).
+2. **High-Recall Execution**: Performs an ultra-sensitive scan for all potential abnormalities, including minor shadows or risk markers.
+3. **Clinical Adjudication**: Refines "noisy" observations into a peer-reviewed technical rationale for the consensus board.
 
-- **Artifact Management:** Loads case data from `artifacts/runs/`.
-- **Robust Parsing:** Cleans messy LLM outputs using a multi-stage parser (Markdown, JSON, and Python literal evaluation).
-- **Hybrid Logic:** Combines cloud findings with local "Stub" agents for clinical history extraction.
+- **Consensus Agent Loop (Few-Shot CoT)**: The Adjudicator uses **Few-Shot CoT** to learn "Medical Debate" logic. It is trained via examples to prioritize clinical rules, such as acknowledging that radiographic findings often lag behind physical symptoms, over raw model confidence scores.
 
-### 3. The "Face" (Streamlit Dashboard)
+### 🤖 Agent Communication Structure
 
-A physician-facing UI (`apps/app.py`) providing:
+The system uses **Vertical Communication** (Top-Down/Bottom-Up) to maintain data integrity.
 
-- **Consensus Summary:** Real-time risk scoring and discrepancy alerts.
-- **Case Review:** Interactive visualization of X-rays and synchronized audio playback.
-- **AI Clinical Consultant:** A local chat interface (using **Ollama/Gemma 2**) for interactive case debriefing.
+- **Parallel Execution**: The Acoustic (HeAR), Vision (MedGemma), and History (OpenBioLLM) agents work in parallel to prevent **cascading bias**.
+- **Vertical Adjudication**: Structured findings are funneled into the **Consensus Board**. This supervisor agent has the authority to **override** individual agent findings if it detects cross-modal contradictions (e.g., overriding a "stable" X-ray if acoustics reveal new-onset crackles).
+
+### 🛠️ ReAct Logic
+
+During streaming, the system follows the **ReAct (Reason + Act)** pattern:
+
+1. **Reason**: Analyzes clinical context to determine specific "Regions of Interest."
+2. **Act**: Performs targeted feature extraction across imaging and acoustics.
+3. **Refine**: Resolves discrepancies to produce the final clinical directive.
 
 ---
 
-## 🛠️ Setup Instructions
+## 🧬 System Sequence Diagram
 
-### Step 1: Launch the Cloud "Brain"
-
-1. Open the provided notebook in **Google Colab**.
-2. Run the **API Server** cell. This will:
-
-- Load MedSigLIP and HeAR models.
-- Start a FastAPI server.
-- Generate a public `ngrok` URL (e.g., `https://your-unique-id.ngrok-free.dev`).
-
-### Step 2: Configure Local Environment
-
-Create a `.env` file in the root directory:
-
-```bash
-# The URL generated by ngrok in Colab
-API_URL=https://your-unique-id.ngrok-free.dev
-
-# For the moderator fallback (optional)
-HF_TOKEN=your_huggingface_token
+```text
++-------------------------------------------------------------------------------------+
+|                       AEGIS: MEDGEMMA CLINICAL CONSENSUS BOARD                      |
++-------------------------------------------------------------------------------------+
+|                                                                                     |
+|   INTAKE                       PROCESSING                     OUTPUT                |
+|   ------                       ----------                     ------                |
+|                                                                                     |
+|   Frontend UI (Next.js) ->     Vision Agent      ->           Consensus Agent       |
+|   (Clinical Dashboard)         (MedGemma, Cloud)              (Adjudicator, Cloud)  |
+|       |                            |                              |                 |
+|       v                            v                              v                 |
+|   Local Bridge (FastAPI)       Acoustic Agent    ->           FINAL DELIVERABLES    |
+|   (Data Handler)               (HeAR, Cloud)                  (to Frontend UI)      |
+|       |                            |                              |                 |
+|       v                            v                              +-> Verdict       |
+|   Inputs:                      Context Agent     ->           +-> Directives        |
+|   - X-ray (Image)              (OpenBioLLM, Local)            +-> Heatmap           |
+|   - Audio (WAV/MP3)                                                                 |
+|   - History (Text)                                                                  |
+|                                                                                     |
++-------------------------------------------------------------------------------------+
+|                                                                                     |
+|   CONTROL CENTER                                                                    |
+|   --------------                                                                    |
+|   main.py             -> Orchestrates the local pipeline & data flow                |
+|   backend_brains.py   -> Manages Cloud Agents (Vision, Acoustic, Consensus)         |
+|   page.tsx            -> Handles UI rendering & real-time stream display            |
+|   run_case (API)      -> Executes the end-to-end analysis workflow                  |
+|                                                                                     |
++-------------------------------------------------------------------------------------+
 
 ```
 
-### Step 3: Start the Local System
+---
+
+## 🛠️ Technical Stack
+
+- **Frontend**: Next.js 14, Tailwind CSS, Lucide Icons, React-Markdown.
+- **Backend**: FastAPI (Python), Uvicorn, Httpx (Streaming).
+- **AI Models**:
+- `google/medgemma-1.5-4b-it` (Vision/Reasoning).
+- `google/hear-pytorch` (Acoustics).
+- `koesn/llama3-openbiollm-8b` (Local Extraction).
+
+- **Infrastructure**: Ngrok (Tunneling), PyTorch, Transformers.
+
+---
+
+## 🚦 Getting Started
+
+### Backend Setup (Cloud/Colab)
+
+1. Open the `backend_brains.py` script in a GPU-enabled Google Colab environment.
+2. Add your HuggingFace Token with access to MedGemma.
+3. Run the cells to launch the **Ngrok Tunnel**.
+4. **Copy the generated API URL** (e.g., `https://xxxx.ngrok-free.app`).
+
+### Local Bridge Setup
+
+1. Navigate to the `/backend` directory.
+2. Create a `.env` file and paste your Colab URL:
+
+```env
+API_URL=https://your-ngrok-url-here.ngrok-free.app
+
+```
+
+3. Install dependencies and start the local bridge:
 
 ```bash
-# 1. Install dependencies
 pip install -r requirements.txt
-
-# 2. Launch the Orchestrator (Terminal 1)
-python -m uvicorn apps.api.main:app --reload
-
-# 3. Launch the Dashboard (Terminal 2)
-streamlit run apps/app.py
+python main.py
 
 ```
 
----
+### Frontend Setup
 
-## 🚦 Usage & Workflow
+1. Navigate to `/medgemma-ui`.
+2. Install packages and run:
 
-1. **Select Case:** Use the sidebar to pick a case (e.g., `CASE_001`).
-2. **Edit Notes:** Modify clinical history in real-time.
-3. **Analyze:** Click "Analyze Case." The system will:
+```bash
+npm install
+npm run dev
 
-- Send the X-ray to the **Vision Agent** on Colab.
-- Send the lung sound to the **Acoustic Agent** on Colab.
-- Synthesize all findings using the **MedGemma Consensus Agent**.
+```
 
-4. **Consult:** If a discrepancy is found, use the **AI Consultant** tab to ask, _"Why is the risk score high given the stable imaging?"_.
-
----
-
-## 📦 Tech Stack
-
-- **Models:** `MedSigLIP`, `HeAR`, `MedGemma 1.5`, `Gemma 2`.
-- **Server:** `FastAPI`, `Uvicorn`, `ngrok`.
-- **Frontend:** `Streamlit`, `Pillow`.
-- **Audio:** `librosa`, `torchaudio`.
+3. Access the dashboard at `http://localhost:3000`.
