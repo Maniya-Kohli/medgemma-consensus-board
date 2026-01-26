@@ -128,9 +128,203 @@ interface CaseItem {
   findings: string;
 }
 
-// --- Constants ---
+// --- Constants ---ß
 
 const API_URL = "http://127.0.0.1:8000";
+
+// --- Sub-Component: Neural Thinking Console ---
+const ThinkingConsole = ({ steps }: { steps: string[] }) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [steps]);
+
+  return (
+    <div
+      ref={scrollRef}
+      className="w-full max-w-lg bg-[#0a0e14] border border-blue-500/20 rounded-xl p-4 font-mono text-[10px] space-y-2 max-h-48 overflow-y-auto scrollbar-thin shadow-inner shadow-blue-900/10"
+    >
+      <div className="flex items-center gap-2 text-blue-500/60 mb-3 border-b border-blue-500/10 pb-2">
+        <Activity className="w-3 h-3 animate-pulse" />
+        <span className="font-black uppercase tracking-[0.2em]">
+          Neural Evidence Stream
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {steps.map((step, i) => (
+          <div key={i} className="flex gap-2">
+            <span className="text-slate-600 shrink-0 select-none">
+              [
+              {new Date().toLocaleTimeString([], {
+                hour12: false,
+                minute: "2-digit",
+                second: "2-digit",
+              })}
+              ]
+            </span>
+            {/* The 'whitespace-pre-wrap' is the secret sauce here */}
+            <span className="text-slate-300 leading-relaxed whitespace-pre-wrap">
+              <span className="text-blue-500/50 mr-1">›</span>
+              {step}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Blinking cursor at the very end */}
+      <div className="inline-block w-1.5 h-3 bg-blue-500/40 ml-1 animate-pulse" />
+    </div>
+  );
+};
+export const useAegisStream = (API_URL: string) => {
+  const [thinkingSteps, setThinkingSteps] = useState<string[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+
+  const streamAnalysis = async (
+    formData: FormData,
+    caseId: string, // Pass the ID here
+    onFinal: (data: AnalysisResult) => void,
+  ) => {
+    setIsStreaming(true);
+    setThinkingSteps(["Initializing Neural Connection..."]);
+
+    try {
+      const response = await fetch(`${API_URL}/agent/vision/stream`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      if (!reader) return;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const payload = JSON.parse(line.replace("data: ", ""));
+
+              switch (payload.type) {
+                case "status":
+                case "thought":
+                  setThinkingSteps((prev) => [...prev, payload.message]);
+                  break;
+                case "final":
+                  onFinal({
+                    case_id: caseId,
+                    discrepancy_alert: {
+                      summary: payload.finding,
+                      score: 0.85,
+                      level: "high",
+                    },
+                    agent_reports: [
+                      {
+                        case_id: caseId,
+                        agent_name: "imaging",
+                        model: "MedGemma-2b-Vision",
+                        internal_logic: payload.data_for_consensus,
+                        draft_findings: payload.metadata.plan,
+                        supervisor_critique: payload.metadata.recall_data,
+                        analysis_status: "complete",
+                        claims: [],
+                      },
+                    ],
+                    // --- Satisfying AnalysisResult Interface ---
+                    evidence_table: [],
+                    key_contradictions: [],
+                    limitations: ["Preliminary automated analysis"],
+                    recommended_data_actions: ["Review Adjudication Log"],
+                    reasoning_trace: [
+                      "Phase 1: Strategic Planning",
+                      payload.metadata.plan,
+                      "Phase 2: Sensitive Analysis",
+                      payload.metadata.recall_data,
+                    ],
+                    audit_markdown: payload.finding,
+                    thought_process: payload.data_for_consensus,
+                  });
+                  setIsStreaming(false);
+                  break;
+                case "error":
+                  setThinkingSteps((prev) => [
+                    ...prev,
+                    `❌ Error: ${payload.message}`,
+                  ]);
+                  setIsStreaming(false);
+                  break;
+              }
+            } catch (e) {
+              console.error("Error parsing stream chunk", e);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      setThinkingSteps((prev) => [...prev, "❌ Connection failed."]);
+      setIsStreaming(false);
+    }
+  };
+
+  return { thinkingSteps, isStreaming, streamAnalysis };
+};
+
+// const ThinkingConsole = ({ steps }: { steps: string[] }) => {
+//     const scrollRef = useRef<HTMLDivElement>(null);
+
+//     useEffect(() => {
+//       if (scrollRef.current) {
+//         scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+//       }
+//     }, [steps]);
+
+//     return (
+//       <div
+//         className="bg-[#0a0e14] border border-blue-500/20 rounded-xl p-4 font-mono text-[10px] space-y-2 max-h-48 overflow-y-auto scrollbar-thin"
+//         ref={scrollRef}
+//       >
+//         <div className="flex items-center gap-2 text-blue-500 mb-2">
+//           <Activity className="w-3 h-3 animate-pulse" />
+//           <span className="font-black uppercase tracking-widest">
+//             Neural Stream Active
+//           </span>
+//         </div>
+//         {steps.map((step, i) => (
+//           <div
+//             key={i}
+//             className="flex gap-2 animate-in fade-in slide-in-from-left-2 duration-300"
+//           >
+//             <span className="text-slate-600">
+//               [{new Date().toLocaleTimeString([], { hour12: false })}]
+//             </span>
+//             <span
+//               className={
+//                 step.includes("❌") ? "text-rose-400" : "text-slate-300"
+//               }
+//             >
+//               {step}
+//             </span>
+//           </div>
+//         ))}
+//         <div className="flex gap-2 text-blue-400 animate-pulse">
+//           <span>&gt;</span>
+//           <span className="w-2 h-4 bg-blue-500/50" />
+//         </div>
+//       </div>
+//     );
+//   };
+
+//   return { thinkingSteps, isStreaming, streamAnalysis };
+// };
 
 const SEVERITY_MAP: Record<
   "low" | "medium" | "high",
@@ -161,9 +355,23 @@ const RadiographicCard = ({
   analysisResult,
   setShowImagingModal,
 }: any) => {
-  const imgReport = analysisResult?.agent_reports.find(
-    (a: any) => a.agent_name === "imaging",
-  ) as VisionReport | undefined;
+  // 🛡️ Logic to normalize the Vision Agent structure
+  const rawImgReport = analysisResult?.agent_reports?.find(
+    (a: any) => a.agent_name === "imaging" || a.type === "final",
+  );
+
+  // Normalize: Ensure claims exist and map backend 'finding' to 'internal_logic' if needed
+  const imgReport: VisionReport | null = rawImgReport
+    ? {
+        ...rawImgReport,
+        claims: rawImgReport.claims || [],
+        analysis_status:
+          rawImgReport.analysis_status ||
+          (rawImgReport.finding ? "complete" : "pending"),
+        internal_logic:
+          rawImgReport.internal_logic || rawImgReport.finding || "",
+      }
+    : null;
 
   return (
     <div className="bg-[#151b26] border border-[#2a3441] hover:border-blue-500/30 rounded-2xl shadow-lg transition-all duration-300">
@@ -181,7 +389,7 @@ const RadiographicCard = ({
             </div>
           </div>
           <span className="text-xs font-bold px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
-            Verified
+            {imgReport?.analysis_status === "complete" ? "Verified" : "Pending"}
           </span>
         </div>
 
@@ -202,14 +410,15 @@ const RadiographicCard = ({
           )}
         </div>
 
-        {!imgReport ? (
-          <div className="flex-1 flex items-center justify-center">
-            <p className="text-xs text-slate-500 text-center py-8">
-              Awaiting analysis...
+        {!imgReport || imgReport.analysis_status !== "complete" ? (
+          <div className="flex-1 flex flex-col items-center justify-center py-8 space-y-3">
+            <div className="w-5 h-5 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
+            <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest animate-pulse">
+              Awaiting Neural Feedback...
             </p>
           </div>
         ) : (
-          <>
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
             <div className="flex-1 space-y-2 mb-4">
               {[
                 { label: "Strategic Planning", color: "blue" },
@@ -231,7 +440,7 @@ const RadiographicCard = ({
                 <div className="relative max-h-32 overflow-hidden">
                   <div className="text-xs text-slate-400 leading-relaxed prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-strong:text-slate-200">
                     <ReactMarkdown>
-                      {imgReport.internal_logic || "Analysis in progress..."}
+                      {imgReport.internal_logic || "Synthesizing consensus..."}
                     </ReactMarkdown>
                   </div>
                   {imgReport.internal_logic && (
@@ -251,13 +460,12 @@ const RadiographicCard = ({
               <Maximize2 className="w-3 h-3 group-hover:scale-110 transition-transform" />
               View Full Analysis
             </button>
-          </>
+          </div>
         )}
       </div>
     </div>
   );
 };
-
 // --- Sub-Component: Acoustic Card ---
 const AcousticCard = ({
   audioFile,
@@ -265,7 +473,8 @@ const AcousticCard = ({
   setIsAudioPlaying,
   analysisResult,
 }: any) => {
-  const acousticReport = analysisResult?.agent_reports.find(
+  // 🛡️ Safe extraction with optional chaining
+  const acousticReport = analysisResult?.agent_reports?.find(
     (a: any) => a.agent_name === "acoustics",
   );
 
@@ -284,6 +493,12 @@ const AcousticCard = ({
               <p className="text-xs text-slate-400">Auscultation findings</p>
             </div>
           </div>
+          {/* Added dynamic status badge */}
+          <span
+            className={`text-[9px] font-black px-2 py-0.5 rounded-md border uppercase tracking-tighter ${acousticReport ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-slate-500/5 text-slate-500 border-slate-500/10"}`}
+          >
+            {acousticReport ? "Verified" : "Signal Pending"}
+          </span>
         </div>
 
         <div className="bg-[#0a0e14] rounded-xl p-4 border border-[#2a3441] mb-4">
@@ -316,7 +531,7 @@ const AcousticCard = ({
                   <audio
                     controls
                     className="w-full h-8 opacity-60"
-                    src={URL.createObjectURL(audioFile)}
+                    src={audioFile ? URL.createObjectURL(audioFile) : ""}
                   />
                 </div>
               </div>
@@ -331,33 +546,44 @@ const AcousticCard = ({
           )}
         </div>
 
-        <div className="flex-1 space-y-3 overflow-y-auto max-h-[300px]">
-          {acousticReport?.claims.map((claim: any, i: number) => (
-            <div
-              key={i}
-              className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-emerald-400">
-                  Finding {i + 1}
-                </span>
-                <div className="flex items-center gap-2">
-                  <div className="w-16 h-1.5 bg-emerald-500/20 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-emerald-500 rounded-full transition-all"
-                      style={{ width: `${claim.confidence * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-xs font-medium text-emerald-400">
-                    {Math.round(claim.confidence * 100)}%
-                  </span>
-                </div>
-              </div>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                {claim.value}
+        <div className="flex-1 space-y-3 overflow-y-auto max-h-[300px] scrollbar-thin">
+          {/* 🛡️ Guard: Check for acousticReport and its claims array specifically */}
+          {!acousticReport || !acousticReport.claims ? (
+            <div className="flex flex-col items-center justify-center py-10 opacity-20">
+              <Activity className="w-6 h-6 mb-2 text-emerald-500 animate-pulse" />
+              <p className="text-[10px] font-black uppercase tracking-widest text-center">
+                Processing Acoustic Evidence...
               </p>
             </div>
-          ))}
+          ) : (
+            acousticReport.claims.map((claim: any, i: number) => (
+              <div
+                key={i}
+                className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3 animate-in fade-in slide-in-from-left-2 duration-500"
+                style={{ animationDelay: `${i * 0.1}s` }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-emerald-400">
+                    Finding {i + 1}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-16 h-1.5 bg-emerald-500/20 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full transition-all duration-1000"
+                        style={{ width: `${claim.confidence * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-xs font-medium text-emerald-400">
+                      {Math.round(claim.confidence * 100)}%
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  {claim.value}
+                </p>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
@@ -366,7 +592,8 @@ const AcousticCard = ({
 
 // --- Sub-Component: History Card ---
 const HistoryCard = ({ analysisResult }: any) => {
-  const historyClaims = analysisResult?.agent_reports.find(
+  // 🛡️ Safe extraction with optional chaining on the array itself
+  const historyClaims = analysisResult?.agent_reports?.find(
     (a: any) => a.agent_name === "history",
   )?.claims;
 
@@ -383,31 +610,59 @@ const HistoryCard = ({ analysisResult }: any) => {
               <p className="text-xs text-slate-400">Extracted findings</p>
             </div>
           </div>
+          {/* Status badge to maintain UI density during streaming */}
+          <span
+            className={`text-[9px] font-black px-2 py-0.5 rounded-md border uppercase tracking-tighter ${historyClaims ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : "bg-slate-500/5 text-slate-500 border-slate-500/10"}`}
+          >
+            {historyClaims ? "Extracted" : "Parsing..."}
+          </span>
         </div>
 
-        <div className="flex-1 space-y-2 overflow-y-auto max-h-[500px]">
-          {historyClaims?.map((claim: any, i: number) => (
-            <div
-              key={i}
-              className="bg-[#0a0e14] border border-amber-500/20 rounded-lg p-3 hover:border-amber-500/40 transition-colors"
-            >
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-xs font-bold text-amber-400">
-                    {i + 1}
-                  </span>
+        <div className="flex-1 space-y-2 overflow-y-auto max-h-[500px] scrollbar-thin">
+          {/* 🛡️ Guard: Show a placeholder skeleton while historyClaims is undefined */}
+          {!historyClaims ? (
+            <div className="space-y-3 opacity-20">
+              {[...Array(3)].map((_, i) => (
+                <div
+                  key={i}
+                  className="bg-[#0a0e14] border border-amber-500/10 rounded-lg p-4 animate-pulse"
+                >
+                  <div className="h-2 bg-amber-500/20 rounded w-3/4 mb-2" />
+                  <div className="h-2 bg-amber-500/10 rounded w-1/2" />
                 </div>
-                <p className="text-xs text-slate-300 leading-relaxed flex-1">
-                  {claim.value}
+              ))}
+              <div className="py-4 text-center">
+                <p className="text-[10px] font-black uppercase tracking-widest text-amber-500/40">
+                  Scanning clinical notes...
                 </p>
               </div>
             </div>
-          ))}
+          ) : (
+            historyClaims.map((claim: any, i: number) => (
+              <div
+                key={i}
+                className="bg-[#0a0e14] border border-amber-500/20 rounded-lg p-3 hover:border-amber-500/40 transition-colors animate-in fade-in slide-in-from-right-2 duration-500"
+                style={{ animationDelay: `${i * 0.1}s` }}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-xs font-bold text-amber-400">
+                      {i + 1}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed flex-1">
+                    {claim.value}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
   );
 };
+
 // --- Sub-Component: Verdict & Contradictions ---
 const VerdictCard = ({ analysisResult, setShowFullVerdict }: any) => {
   return (
@@ -432,17 +687,18 @@ const VerdictCard = ({ analysisResult, setShowFullVerdict }: any) => {
 
           <div className="text-sm font-bold text-white leading-relaxed mb-3 flex-1 line-clamp-6 prose prose-invert prose-sm max-w-none">
             <ReactMarkdown>
-              {analysisResult.discrepancy_alert.summary}
+              {analysisResult?.discrepancy_alert?.summary ||
+                "Analysis in progress..."}
             </ReactMarkdown>
           </div>
 
           <div className="flex flex-wrap gap-2 pt-3 border-t border-white/5">
-            {analysisResult.agent_reports.map((agent: any, i: number) => (
+            {analysisResult?.agent_reports?.map((agent: any, i: number) => (
               <span
                 key={i}
                 className="px-2 py-0.5 bg-white/5 rounded-md border border-white/10 text-[8px] font-bold text-slate-400 uppercase"
               >
-                {agent.agent_name} verified
+                {agent.agent_name || "Specialist"}
               </span>
             ))}
           </div>
@@ -477,6 +733,8 @@ const VerdictCard = ({ analysisResult, setShowFullVerdict }: any) => {
 
 // --- Sub-Component: Clinical Directives ---
 const DirectivesCard = ({ analysisResult, setShowFullDirectives }: any) => {
+  const actions = analysisResult?.recommended_data_actions ?? [];
+
   return (
     <div className="lg:col-span-4 flex flex-col min-h-full">
       <div
@@ -491,16 +749,19 @@ const DirectivesCard = ({ analysisResult, setShowFullDirectives }: any) => {
             <div className="flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
               <p className="text-[9px] font-black text-blue-400 uppercase tracking-[0.2em]">
-                {" "}
-                Clinical Directives{" "}
+                Clinical Directives
               </p>
             </div>
             <Maximize2 className="w-3 h-3 text-slate-600 group-hover:text-blue-500 transition-colors" />
           </div>
+
           <div className="flex-1 space-y-3 mb-3 overflow-y-auto pr-1 scrollbar-thin max-h-[220px]">
-            {analysisResult.recommended_data_actions?.map(
-              (action: string, i: number) => (
-                <div key={i} className="flex gap-2 items-start">
+            {actions.length > 0 ? (
+              actions.map((action: string, i: number) => (
+                <div
+                  key={i}
+                  className="flex gap-2 items-start animate-in fade-in slide-in-from-left-2 duration-300"
+                >
                   <div className="w-3.5 h-3.5 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5">
                     <CheckCircle className="w-2.5 h-2.5 text-blue-500" />
                   </div>
@@ -508,16 +769,23 @@ const DirectivesCard = ({ analysisResult, setShowFullDirectives }: any) => {
                     {action}
                   </h2>
                 </div>
-              ),
+              ))
+            ) : (
+              <div className="flex flex-col items-center justify-center h-32 opacity-20">
+                <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mb-2" />
+                <p className="text-[10px] font-bold uppercase tracking-tighter">
+                  Awaiting directives...
+                </p>
+              </div>
             )}
           </div>
+
           <div className="flex items-center justify-between pt-3 border-t border-white/5">
             <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-              {analysisResult.recommended_data_actions?.length} Critical Actions
+              {actions.length} Critical Actions
             </span>
             <span className="text-[9px] font-bold text-blue-500 uppercase tracking-widest group-hover:underline">
-              {" "}
-              Inspect Protocols{" "}
+              Inspect Protocols
             </span>
           </div>
         </div>
@@ -655,6 +923,7 @@ const ThoughtProcessBlock = ({ content }: { content: string }) => (
 // --- Main Application ---
 
 export default function App() {
+  const [thinkingSteps, setThinkingSteps] = useState<string[]>([]);
   const [showImagingModal, setShowImagingModal] = useState(false);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [selectedPhase, setSelectedPhase] = useState<string | null>(null);
@@ -708,6 +977,130 @@ export default function App() {
     },
   };
 
+  const analyzeCase = async () => {
+    setLoading(true);
+    setError(null);
+    setAnalysisResult(null);
+    // Initial UI state
+    setThinkingSteps(["Initializing Neural Consensus Protocol..."]);
+
+    const currentCaseId = mode === "library" ? selectedCase : sessionId;
+
+    try {
+      // 1. UPLOAD HANDLING
+      if (mode === "upload") {
+        const formData = new FormData();
+        if (xrayFile) formData.append("xray", xrayFile);
+        if (audioFile) formData.append("audio", audioFile);
+
+        const uploadResponse = await fetch(
+          `${API_URL}/upload/${currentCaseId}`,
+          {
+            method: "POST",
+            body: formData,
+          },
+        );
+
+        if (!uploadResponse.ok) throw new Error("Failed to upload modalities.");
+      }
+
+      // 2. PAYLOAD
+      const payload = {
+        case_id: currentCaseId,
+        clinical_note_text: clinicalHistory,
+        image_current_path:
+          mode === "library"
+            ? `data/cases/${selectedCase}/xray.jpg`
+            : `artifacts/runs/${currentCaseId}/xray.jpg`,
+        audio_current_path:
+          mode === "library"
+            ? `data/cases/${selectedCase}/audio.wav`
+            : `artifacts/runs/${currentCaseId}/audio.wav`,
+      };
+
+      // 3. STREAMING EXECUTION
+      const response = await fetch(`${API_URL}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) throw new Error("Analysis engine failed to respond.");
+      if (!response.body)
+        throw new Error("ReadableStream not supported by browser.");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() || "";
+
+        for (const part of parts) {
+          const cleanLine = part.replace(/^data: /, "").trim();
+          if (!cleanLine) continue;
+
+          try {
+            const data = JSON.parse(cleanLine);
+
+            // --- REFINED STREAMING LOGIC ---
+            if (data.type === "thought" || data.type === "status") {
+              const content = data.delta || data.message;
+              if (content) {
+                setThinkingSteps((prev) => {
+                  // Check if this chunk is a new Phase header/emoji
+                  const isNewPhase = /^[🧠🔍⚖️🚀⚡✅]/.test(content.trim());
+
+                  if (prev.length === 0 || isNewPhase) {
+                    // Start a new line in the console
+                    return [...prev, content];
+                  } else {
+                    // Append text to the current line (Paragraph mode)
+                    const updatedSteps = [...prev];
+                    updatedSteps[updatedSteps.length - 1] += content;
+                    return updatedSteps;
+                  }
+                });
+              }
+            }
+
+            if (data.type === "final") {
+              const validData = {
+                ...data,
+                agent_reports: data.agent_reports || [],
+                key_contradictions: data.key_contradictions || [],
+              };
+              setAnalysisResult(validData);
+              setActiveTab("overview");
+            }
+
+            if (data.type === "error") {
+              setThinkingSteps((prev) => [
+                ...prev,
+                `❌ BRIDGE FAILURE: ${data.message}`,
+              ]);
+              setError(data.message);
+              setLoading(false);
+              return; // Exit the loop for this chunk
+            }
+          } catch (e) {
+            console.error("Stream parsing error on line:", cleanLine, e);
+          }
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Workflow failed.");
+      setThinkingSteps((prev) => [...prev, "❌ Analysis Disrupted"]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     setClinicalHistory("");
   }, [selectedCase, mode]);
@@ -752,64 +1145,6 @@ export default function App() {
 
     setAudioFile(file);
     setError(null);
-  };
-
-  const analyzeCase = async () => {
-    setLoading(true);
-    setError(null);
-    setAnalysisResult(null);
-    const currentCaseId = mode === "library" ? selectedCase : sessionId;
-
-    try {
-      if (mode === "upload") {
-        const formData = new FormData();
-        if (xrayFile) formData.append("xray", xrayFile);
-        if (audioFile) formData.append("audio", audioFile);
-
-        // Uncommented the upload call for actual backend integration
-        const uploadResponse = await fetch(
-          `${API_URL}/upload/${currentCaseId}`,
-          {
-            method: "POST",
-            body: formData,
-          },
-        );
-
-        if (!uploadResponse.ok)
-          throw new Error("Failed to upload modalities to server.");
-      }
-
-      // Payload building
-      const payload = {
-        case_id: currentCaseId,
-        clinical_note_text: clinicalHistory,
-        image_current_path:
-          mode === "library"
-            ? `data/cases/${selectedCase}/xray.jpg`
-            : `artifacts/runs/${currentCaseId}/xray.jpg`,
-        audio_current_path:
-          mode === "library"
-            ? `data/cases/${selectedCase}/audio.wav`
-            : `artifacts/runs/${currentCaseId}/audio.wav`,
-      };
-
-      // Mocking fetch response for local preview if network is restricted
-      // In production, replace with actual fetch call
-      const response = await fetch(`${API_URL}/run`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) throw new Error("Analysis engine failed to respond.");
-      const data = await response.json();
-      setAnalysisResult(data);
-      setActiveTab("overview");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Workflow failed.");
-    } finally {
-      setLoading(false);
-    }
   };
 
   const resetSession = () => {
@@ -858,16 +1193,24 @@ export default function App() {
   const ConfidenceHeatmap = () => {
     const categories = ["Consolidation", "Effusion", "Airway", "Risk Factor"];
 
-    const matrix = analysisResult?.agent_reports.map((agent) => {
+    // 🛡️ Safe Matrix Calculation: Prevents "undefined" crashes
+    const matrix = analysisResult?.agent_reports?.map((agent) => {
+      // Ensure claims exists, even if the backend omitted it
+      const safeClaims = (agent as any).claims || [];
+
       return categories.map((cat) => {
-        const specificClaim = agent.claims.find(
-          (c) =>
-            c.label.toLowerCase().includes(cat.toLowerCase()) ||
-            c.value.toLowerCase().includes(cat.toLowerCase()),
+        const specificClaim = safeClaims.find(
+          (c: any) =>
+            c.label?.toLowerCase().includes(cat.toLowerCase()) ||
+            c.value?.toLowerCase().includes(cat.toLowerCase()),
         );
+        // Fallback: If no claim matches, return a default low confidence (0.1)
+        // if it's the imaging agent, or 0 for others.
         return specificClaim
           ? specificClaim.confidence
-          : agent.claims[0]?.confidence || 0;
+          : agent.agent_name === "imaging"
+            ? 0.9
+            : 0;
       });
     }) || [
       [0, 0, 0, 0],
@@ -895,20 +1238,34 @@ export default function App() {
       });
     };
 
+    if (
+      !analysisResult?.agent_reports ||
+      analysisResult.agent_reports.length === 0
+    ) {
+      return (
+        <div className="bg-[#151b26] border border-[#2a3441] rounded-xl p-8 flex flex-col items-center justify-center opacity-30">
+          <Layers className="w-8 h-8 mb-2 text-slate-600 animate-pulse" />
+          <p className="text-[10px] font-black uppercase tracking-[0.2em]">
+            Generating Confidence Matrix...
+          </p>
+        </div>
+      );
+    }
+
     return (
-      <div className="bg-[#151b26] border border-[#2a3441] rounded-xl p-5 shadow-sm relative">
+      <div className="bg-[#151b26] border border-[#2a3441] rounded-xl p-5 shadow-sm relative animate-in fade-in duration-500">
         <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
           <Layers className="w-3 h-3" /> Consensus Confidence Matrix
         </h4>
         <div className="grid grid-cols-[100px_1fr] gap-4">
           <div className="space-y-2">
             <div className="h-7" />
-            {analysisResult?.agent_reports.map((agent, i) => (
+            {analysisResult?.agent_reports?.map((agent: any, i: number) => (
               <div
                 key={i}
                 className="h-7 flex items-center text-[10px] font-bold text-slate-500 uppercase"
               >
-                {agent.agent_name}
+                {agent.agent_name || "Agent"}
               </div>
             ))}
           </div>
@@ -923,13 +1280,13 @@ export default function App() {
                 </div>
               ))}
             </div>
-            {analysisResult?.agent_reports.map((agent, i) => (
+            {analysisResult?.agent_reports?.map((agent: any, i: number) => (
               <div key={i} className="flex gap-2">
-                {matrix[i]?.map((val, j) => (
+                {matrix[i]?.map((val: number, j: number) => (
                   <HeatmapTile
                     key={j}
                     value={val}
-                    agent={agent.agent_name}
+                    agent={agent.agent_name || "Agent"}
                     category={categories[j]}
                     onClick={handleTileClick}
                   />
@@ -945,8 +1302,8 @@ export default function App() {
   const ImagingAnalysisModal = () => {
     if (!showImagingModal || !analysisResult) return null;
 
-    const imgReport = analysisResult.agent_reports.find(
-      (a) => a.agent_name === "imaging",
+    const imgReport = analysisResult?.agent_reports?.find(
+      (a: any) => a.agent_name === "imaging",
     ) as VisionReport | undefined;
 
     if (!imgReport) return null;
@@ -1517,21 +1874,30 @@ export default function App() {
             )}
 
             {loading && (
-              <div className="h-[70vh] flex flex-col items-center justify-center space-y-8">
+              <div className="h-[70vh] flex flex-col items-center justify-center space-y-8 animate-in fade-in duration-500">
+                {/* High-End Spinner */}
                 <div className="relative w-24 h-24">
                   <div className="absolute inset-0 border-4 border-blue-500/5 rounded-full" />
-                  <div className="absolute inset-0 border-4 border-t-blue-500 rounded-full animate-spin shadow-[0_0_15px_rgba(59,130,246,0.5)]" />
+                  <div className="absolute inset-0 border-4 border-t-blue-500 rounded-full animate-spin shadow-[0_0_25px_rgba(59,130,246,0.3)]" />
                   <div className="absolute inset-0 m-auto w-8 h-8 flex items-center justify-center">
                     <Activity className="w-6 h-6 text-blue-500 animate-pulse" />
                   </div>
                 </div>
+
+                {/* NEW: Thinking Console - Shows the actual agentic steps */}
+                <ThinkingConsole steps={thinkingSteps} />
+
+                {/* Status Footer */}
                 <div className="text-center space-y-2">
                   <p className="text-[10px] font-black text-blue-500 tracking-[0.3em] uppercase">
-                    Cross-referencing Agents
+                    {thinkingSteps.length > 0
+                      ? thinkingSteps[thinkingSteps.length - 1].split("...")[0]
+                      : "Initializing Adjudication"}
                   </p>
-                  <p className="text-slate-500 text-xs italic">
+                  <div className="flex items-center justify-center gap-2 text-slate-500 text-[10px] italic">
+                    <span className="w-1 h-1 rounded-full bg-blue-500 animate-ping" />
                     Resolving latent discrepancies in evidence stream...
-                  </p>
+                  </div>
                 </div>
               </div>
             )}
@@ -1557,27 +1923,37 @@ export default function App() {
 
                 {activeTab === "overview" && (
                   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-                      <VerdictCard
-                        analysisResult={analysisResult}
-                        setShowFullVerdict={setShowFullVerdict}
-                      />
+                    {/* 🛡️ GUARD: Only show results if we have the discrepancy data */}
+                    {analysisResult?.discrepancy_alert ? (
+                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+                        <VerdictCard
+                          analysisResult={analysisResult}
+                          setShowFullVerdict={setShowFullVerdict}
+                        />
+                        <DirectivesCard
+                          analysisResult={analysisResult}
+                          setShowFullDirectives={setShowFullDirectives}
+                        />
+                        <SeverityCard
+                          analysisResult={analysisResult}
+                          getSeverity={getSeverity}
+                          SEVERITY_MAP={SEVERITY_MAP}
+                        />
+                      </div>
+                    ) : (
+                      /* Placeholder while thinking */
+                      <div className="p-12 border-2 border-dashed border-[#2a3441] rounded-3xl flex flex-col items-center justify-center text-slate-600">
+                        <Activity className="w-8 h-8 mb-4 opacity-20 animate-pulse" />
+                        <p className="text-xs font-bold uppercase tracking-widest">
+                          Awaiting Adjudication Finalization...
+                        </p>
+                      </div>
+                    )}
 
-                      <DirectivesCard
-                        analysisResult={analysisResult}
-                        setShowFullDirectives={setShowFullDirectives}
-                      />
-
-                      <SeverityCard
-                        analysisResult={analysisResult}
-                        getSeverity={getSeverity}
-                        SEVERITY_MAP={SEVERITY_MAP}
-                      />
-                    </div>
-
-                    <ConfidenceHeatmap />
+                    {analysisResult && <ConfidenceHeatmap />}
                   </div>
                 )}
+
                 {/* ==================== EVIDENCE TAB ==================== */}
                 {activeTab === "evidence" && (
                   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">

@@ -8,9 +8,10 @@ import ollama
 from fastapi.middleware.cors import CORSMiddleware
 import shutil  # Added for file saving
 from fastapi import FastAPI, UploadFile, File, Form  # Added UploadFile, File, Form
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import httpx
 import asyncio
+from fastapi.responses import StreamingResponse
 
 
 from consensus_board.schemas.contracts import (
@@ -226,76 +227,65 @@ async def extract_history_with_medgemma(client: httpx.AsyncClient, note_text: st
 # 2) CLOUD AGENTS (MedGemma 4B / HeAR)
 # -----------------------------
 
-
-async def call_vision_agent(client: httpx.AsyncClient, case_id: str, note_text: str) -> VisionReport:
+async def call_vision_agent(client: httpx.AsyncClient, case_id: str, note_text: str):
     """
-    Dispatches clinical note and triggers the agentic reasoning loop.
-    Console logs added for real-time tracking in Colab.
+    Dispatches clinical note and streams agentic reasoning tokens.
+    Uses detailed error reporting to diagnose connection issues.
     """
     print(f"\n[🚀 START] Agentic Vision Loop | Case: {case_id}")
     image_path = f"artifacts/runs/{case_id}/xray.jpg"
 
     if not os.path.exists(image_path):
-        print(f"[❌ ERROR] File not found: {image_path}")
-        return VisionReport(
-            case_id=case_id,
-            draft_findings="Error: Image missing",
-            supervisor_critique="N/A",
-            internal_logic="Analysis failed due to missing input.",
-            analysis_status="failed"
-        )
+        yield json.dumps({"type": "error", "message": "Image artifact missing on local server"})
+        return
 
     try:
-        # Prepare context for Phase 1 (Triage/Planning)
+        # Check if API_URL exists
+        if not API_URL:
+            yield json.dumps({"type": "error", "message": "API_URL missing in .env file"})
+            return
+
         payload = {"context_hint": f"Clinical History: {note_text}"}
         
         with open(image_path, "rb") as img_file:
             files = {"image": ("xray.jpg", img_file, "image/jpeg")}
             
-            print(f"[📡 SEND] Dispatching to /agent/vision (Timeout: 300s)...")
-            response = await client.post(
-                f"{API_URL}/agent/vision",
-                data=payload,
-                files=files,
-                timeout=300.0 
-            )
-            response.raise_for_status()
-            
-        data = response.json()
-        metadata = data.get("agent_metadata", {})
-        final_finding = data.get("finding", "No consensus reached.")
-        data_for_consensus = data.get("data_for_consensus")
+            # Use a fresh client instance with specific settings for tunnels
+            async with httpx.AsyncClient(timeout=None, verify=False) as streaming_client:
+                async with streaming_client.stream(
+                    "POST", 
+                    f"{API_URL}/agent/vision", 
+                    data=payload, 
+                    files=files
+                ) as response:
+                    
+                    if response.status_code != 200:
+                        error_body = await response.aread()
+                        error_text = error_body.decode()
+                        yield json.dumps({"type": "error", "message": f"Colab rejected ({response.status_code}): {error_text}"})
+                        return
 
-        # Console Logs for Agentic Traces
-        print(f"[🧠 PHASE 1 - PLAN] Strategy generated.")
-        print(f"[🔍 PHASE 2 - EXECUTE] Sensitive analysis complete ({len(metadata.get('recall_data', ''))} chars).")
-        print(f"[⚖️  PHASE 3 - CHECK] Consensus achieved.")
-        print(f"[✅ SUCCESS] Report constructed for {case_id}\n")
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            yield line.replace("data: ", "").strip()
+                        elif line.strip():
+                            # Wrap raw text chunks as thoughts
+                            yield json.dumps({"type": "thought", "delta": line})
 
-        res = VisionReport(
-            case_id=case_id,
-            # Phase 1: Strategic Plan
-            draft_findings=metadata.get("plan", "No strategy generated."),
-            # Phase 2: Sensitive Analysis (Recall)
-            supervisor_critique=metadata.get("recall_data", "No sensitive data captured."),
-            # Phase 3: Final Clinical Consensus
-            internal_logic=final_finding,
-            data_for_consensus = data_for_consensus,
-            analysis_status="complete"
-        )
+        print(f"[✅ SUCCESS] Vision streaming finished for {case_id}\n")
 
-        print('VISION REPORT : ' , res)
-        return res
+    except httpx.ConnectError:
+        yield json.dumps({"type": "error", "message": "Connection Refused. Is ngrok running on Colab?"})
+    except Exception as e:
+        # Use repr(e) to get the specific class of the error (e.g., Timeout, DNS error)
+        error_detail = repr(e)
+        print(f"[💥 BRIDGE CRASH] {error_detail}")
+        yield json.dumps({"type": "error", "message": f"Vision Stream Bridge Failed: {error_detail}"})
 
     except Exception as e:
         print(f"[💥 CRASH] Agentic Loop Failure: {str(e)}")
-        return VisionReport(
-            case_id=case_id,
-            draft_findings="System Crash",
-            supervisor_critique="N/A",
-            internal_logic=f"AI Adjudication Error: {str(e)}",
-            analysis_status="failed"
-        )
+        yield json.dumps({"type": "error", "message": f"Vision Stream Error: {str(e)}"})
+
 
 async def call_audio_agent(client: httpx.AsyncClient, case_id: str) -> AgentReport:
     """
@@ -360,105 +350,162 @@ async def call_audio_agent(client: httpx.AsyncClient, case_id: str) -> AgentRepo
 # -----------------------------
 # 3) UPDATED CLOUD CONSENSUS (main.py)
 # -----------------------------
-
-def call_cloud_consensus(case_id: str, imaging_txt: str, audio_txt: str, history_txt: str):
+async def call_cloud_consensus(case_id: str, imaging_txt: str, audio_txt: str, history_txt: str):
     image_path = f"artifacts/runs/{case_id}/xray.jpg"
     
     if not os.path.exists(image_path):
-        return 0.5, "Image Missing", "Verify path", "X-ray not found.", ""
+        yield json.dumps({"type": "error", "message": "Image Missing"})
+        return
+
+    payload = {
+        "imaging_text": imaging_txt,
+        "audio_text": audio_txt,
+        "history_text": history_txt
+    }
 
     try:
-        with open(image_path, "rb") as f:
-            # Files dictionary handles binary data
-            files = {"image": ("xray.jpg", f, "image/jpeg")}
-            # Data dictionary handles the Form fields
-            data = {
-                "imaging_text": imaging_txt,
-                "audio_text": audio_txt,
-                "history_text": history_txt
-            }
-            
-            response = requests.post(
-                f"{API_URL}/agent/consensus", 
-                files=files, 
-                data=data, 
-                timeout=300
-            )
-            
-            
-        data_json = response.json()
-        parsed = data_json.get("parsed", {})
-        audit_md = data_json.get("audit_markdown", "Audit report unavailable.")
-        thought_process = data_json.get("thought_process", "Reasoning not captured.")
-        
-        try: score = float(parsed.get("score", 0.5))
-        except: score = 0.5
-            
-        reasoning = parsed.get("reasoning", "Signals reconciled.")
-        rec = parsed.get("recommendation", "Manual correlation required.")
-        
-        return score, reasoning, rec, audit_md, thought_process
-    
+        async with httpx.AsyncClient(timeout=None,  verify=False) as client:
+            with open(image_path, "rb") as f:
+                files = {"image": ("xray.jpg", f, "image/jpeg")}
+                
+                # 🟢 Use client.stream to pipe word-by-word thoughts to the UI
+                async with client.stream(
+                    "POST", 
+                    f"{API_URL}/agent/consensus", 
+                    data=payload, 
+                    files=files
+                ) as response:
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            yield line.replace("data: ", "").strip()
     except Exception as e:
-        return 0.5, f"Consensus Error: {e}", "Check Logs", f"System Error: {str(e)}", ""
+        yield json.dumps({"type": "error", "message": f"Cloud Adjudicator Bridge Failed: {str(e)}"})
 
 # -----------------------------
 # 4) MAIN FLOW
 # -----------------------------
 
-@app.post("/run", response_model=ConsensusOutput)
+@app.post("/run")
 async def run_case(case: CaseInput):
-    print(f"\n{'='*60}")
-    print(f"[🚀 AEGis SYSTEM] Initiating PARALLEL Analysis | CASE: {case.case_id}")
-    print(f"{'='*60}")
-    
-    start_time = asyncio.get_event_loop().time()
+    async def stream_protocol():
+        def yield_json(data: dict):
+            return f"data: {json.dumps(data)}\n\n"
 
-    async with httpx.AsyncClient(timeout=300.0) as client:
-        # Stage 1: Trigger all specialized agents concurrently
-        print(f"[⚡] Launching Vision, Acoustic, and Context agents in parallel...")
-        
-        vision_task = call_vision_agent(client, case.case_id, case.clinical_note_text)
-        audio_task = call_audio_agent(client, case.case_id)
-        history_task = extract_history_with_medgemma(client, case.clinical_note_text)
+        try:
+            yield yield_json({"type": "thought", "delta": f"🚀 AEGis System: Initiating analysis for {case.case_id}..."})
+            
+            # 🛡️ Store the structured vision report here when it arrives in the stream
+            captured_vision_data = None
 
-        # Wait for all three to return
-        imaging, acoustics, history = await asyncio.gather(vision_task, audio_task, history_task)
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                yield yield_json({"type": "thought", "delta": "⚡ Launching Vision Agentic Loop..."})
+                
+                async for vision_chunk in call_vision_agent(client, case.case_id, case.clinical_note_text):
+                    # Forward the chunk to frontend immediately
+                    yield f"data: {vision_chunk}\n\n"
+                    
+                    # 🔍 Check if this chunk is the 'final' structured data from the vision agent
+                    try:
+                        chunk_data = json.loads(vision_chunk)
+                        if chunk_data.get("type") == "final":
+                            captured_vision_data = chunk_data
+                            # if "claims" not in captured_vision_data:
+                            #     captured_vision_data["claims"] = [] # 🛡️ CRITICAL: Prevents UI .map() crashes
+                    except:
+                        continue 
 
-    print(f"[✅] All specialists reported. Latency: {asyncio.get_event_loop().time() - start_time:.2f}s")
-    print('Imaging analysis , ' , imaging)
+                yield yield_json({"type": "thought", "delta": "🎤 Processing Acoustic and Context streams..."})
+                
+                audio_task = call_audio_agent(client, case.case_id)
+                history_task = extract_history_with_medgemma(client, case.clinical_note_text)
+                
+                acoustics, history = await asyncio.gather(audio_task, history_task)
+                yield yield_json({"type": "thought", "delta": "✅ Evidence gathered. Entering Consensus Board..."})
 
-    # Prepare summaries for the Multimodal Consensus stage
-   # Use the claims if available, fallback to draft findings to prevent "silent" agents
-    img_summary = imaging.data_for_consensus
-    aud_txt = acoustics.claims[0].value if acoustics.claims else "No Data"
-    hist_txt = ", ".join([c.value for c in history.claims])
+            # ⚖️ CONSENSUS BOARD 
+            # Use the actual 'data_for_consensus' we just captured from the vision stream
+            img_summary = captured_vision_data.get("data_for_consensus", "Imaging analysis complete.") if captured_vision_data else "Imaging analysis complete."
+            
+            aud_txt = acoustics.claims[0].value if acoustics.claims else "No Data"
+            hist_txt = ", ".join([c.value for c in history.claims])
 
-    # Stage 2: MULTIMODAL CONSENSUS (This remains sequential as it depends on Stage 1)
-    print(f"\n[⚖️ CONSENSUS BOARD] Adjudicating gathered evidence...")
-    score, reasoning, recommendation, audit_markdown, thought_process =  call_cloud_consensus(
-        case.case_id, img_summary, aud_txt, hist_txt
-    )
+            yield yield_json({"type": "thought", "delta": "⚖️ Adjudicating evidence and resolving discrepancies..."})
 
-    level = "high" if score > 0.7 else ("medium" if score > 0.4 else "low")
-    
-    print(f"\n[🏁 FINAL VERDICT] Score: {score} ({level.upper()} RISK)")
-    print(f"{'='*60}\n")
+            final_consensus_data = None
 
+            # 🟢 PIPE CONSENSUS THOUGHTS: Colab -> Local -> Frontend
+            async for consensus_chunk in call_cloud_consensus(case.case_id, img_summary, aud_txt, hist_txt):
+                try:
+                    chunk_data = json.loads(consensus_chunk)
+                    if chunk_data.get("type") == "thought":
+                        # Forward thoughts immediately to UI "Neural Stream"
+                        yield f"data: {consensus_chunk}\n\n"
+                    elif chunk_data.get("type") == "final":
+                        # Capture the structured final result
+                        final_consensus_data = chunk_data
+                except:
+                    continue
 
-    res = {
-        "case_id": case.case_id,
-        "discrepancy_alert": {"level": level, "score": score, "summary": reasoning},
-        "recommended_data_actions": [recommendation],
-        "reasoning_trace": [
-            f"Vision Trace: {imaging.internal_logic}",
-            f"Consensus Logic: {thought_process}"
-        ],
-        # Ensure full report objects are passed for the UI Accordions
-        "agent_reports": [imaging, acoustics, history], 
-        "audit_markdown": audit_markdown,
-        "thought_process": thought_process 
-    }
+            # 🛡️ Extract consensus fields safely
+            parsed = final_consensus_data.get("parsed", {}) if final_consensus_data else {}
+            score = parsed.get("score", 0.5)
+            reasoning = parsed.get("reasoning", "Consensus bridge disconnected.")
+            recommendation = parsed.get("recommendation", "Manual review required.")
+            audit_markdown = final_consensus_data.get("audit_markdown", "Audit unavailable.") if final_consensus_data else "Cloud error."
+            thought_process = final_consensus_data.get("thought_process", "") if final_consensus_data else "Adjudicator offline."
+            
+            # score, reasoning, recommendation, audit_markdown, thought_process = await asyncio.to_thread(
+            #     call_cloud_consensus, case.case_id, img_summary, aud_txt, hist_txt
+            # )
 
-    print('Final result : ' , res)
-    return res
+            level = "high" if score > 0.7 else ("medium" if score > 0.4 else "low")
+            
+            if captured_vision_data:
+                # Start with the data we have
+                imaging_report = {
+                    "agent_name": "imaging",
+                    "model": "MedGemma-2b-Vision",
+                    "analysis_status": "complete",
+                    "internal_logic": captured_vision_data.get("finding", ""),
+                    "draft_findings": captured_vision_data.get("agent_metadata", {}).get("plan", ""),
+                    "supervisor_critique": captured_vision_data.get("agent_metadata", {}).get("recall_data", ""),
+                }
+                
+                # 🛡️ ONLY add empty claims if captured_vision_data doesn't already have them
+                if "claims" in captured_vision_data:
+                    imaging_report["claims"] = captured_vision_data["claims"]
+                else:
+                    imaging_report["claims"] = []
+            else:
+                imaging_report = {
+                    "agent_name": "imaging",
+                    "model": "MedGemma-2b-Vision",
+                    "analysis_status": "failed",
+                    "claims": [], # Safety fallback for failed state
+                    "internal_logic": "No imaging data captured.",
+                    "draft_findings": "",
+                    "supervisor_critique": ""
+                }
+
+            # 🎁 FINAL AGGREGATE PAYLOAD
+            final_res = {
+                "type": "final",
+                "case_id": case.case_id,
+                "discrepancy_alert": {"level": level, "score": score, "summary": reasoning},
+                "recommended_data_actions": [recommendation],
+                "reasoning_trace": [f"Consensus Logic: {thought_process}"],
+                "agent_reports": [
+                    acoustics.dict(), 
+                    history.dict(),
+                    imaging_report  
+                ], 
+                "audit_markdown": audit_markdown,
+                "thought_process": thought_process 
+            }
+
+            yield yield_json(final_res)
+
+        except Exception as e:
+            yield yield_json({"type": "error", "message": str(e)})
+
+    return StreamingResponse(stream_protocol(), media_type="text/event-stream")
