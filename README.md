@@ -127,3 +127,11 @@ npm run dev
 ```
 
 3. Access the dashboard at `http://localhost:3000`.
+
+📍 Current Focus:
+
+1. Collaboration Topology Evolution: Evolving the Aegis Clinical orchestration layer from a vertical aggregator into a Shared Blackboard framework. This removes information bottlenecks by allowing all specialized agents to access a single "source of truth" throughout the reasoning process.
+
+2. Bidirectional Feedback Loops: Building advanced communication protocols where the Consensus Agent acts as a moderator, pinning key evidence in Global Memory to trigger re-evaluations across different data modalities.
+
+3. Self-Evolving Group Intelligence: Leveraging shared experience memory to improve collective performance on complex, long-horizon clinical tasks over time.
