@@ -392,7 +392,7 @@ async def run_case(case: CaseInput):
             return f"data: {json.dumps(data)}\n\n"
 
         try:
-            yield yield_json({"type": "thought", "delta": f"🚀 AEGis System: Initiating analysis for {case.case_id}..."})
+            yield yield_json({"type": "thought", "delta": f"🚀 Momo System: Initiating analysis for {case.case_id}..."})
             
             # 🛡️ Store the structured vision report here when it arrives in the stream
             captured_vision_data = None

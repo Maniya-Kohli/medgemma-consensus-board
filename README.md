@@ -41,7 +41,7 @@ During streaming, the system follows the **ReAct (Reason + Act)** pattern:
 
 ```text
 +-------------------------------------------------------------------------------------+
-|                       AEGIS: MEDGEMMA CLINICAL CONSENSUS BOARD                      |
+|                       MOMO: MEDGEMMA CLINICAL CONSENSUS BOARD                      |
 +-------------------------------------------------------------------------------------+
 |                                                                                     |
 |   INTAKE                       PROCESSING                     OUTPUT                |
