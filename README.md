@@ -128,7 +128,9 @@ npm run dev
 
 3. Access the dashboard at `http://localhost:3000`.
 
-📍 Current Focus:
+---
+
+## 📍Current Focus
 
 1. Collaboration Topology Evolution: Evolving the Aegis Clinical orchestration layer from a vertical aggregator into a Shared Blackboard framework. This removes information bottlenecks by allowing all specialized agents to access a single "source of truth" throughout the reasoning process.
 
