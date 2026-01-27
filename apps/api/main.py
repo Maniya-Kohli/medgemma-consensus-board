@@ -388,124 +388,47 @@ async def call_cloud_consensus(case_id: str, imaging_txt: str, audio_txt: str, h
 @app.post("/run")
 async def run_case(case: CaseInput):
     async def stream_protocol():
-        def yield_json(data: dict):
-            return f"data: {json.dumps(data)}\n\n"
+        target_dir = f"artifacts/runs/{case.case_id}"
+        image_path = os.path.join(target_dir, "xray.jpg")
+        audio_path = os.path.join(target_dir, "audio.wav")
 
+        # Create a list of files to open and eventually close
+        opened_files = []
         try:
-            yield yield_json({"type": "thought", "delta": f"🚀 Momo System: Initiating analysis for {case.case_id}..."})
+            files_payload = {}
+            if os.path.exists(image_path):
+                f_img = open(image_path, "rb")
+                opened_files.append(f_img)
+                files_payload["image"] = ("vision.jpg", f_img, "image/jpeg")
             
-            # 🛡️ Store the structured vision report here when it arrives in the stream
-            captured_vision_data = None
+            if os.path.exists(audio_path):
+                f_aud = open(audio_path, "rb")
+                opened_files.append(f_aud)
+                files_payload["audio"] = ("audio.wav", f_aud, "audio/wav")
 
-            async with httpx.AsyncClient(timeout=300.0) as client:
-                yield yield_json({"type": "thought", "delta": "⚡ Launching Vision Agentic Loop..."})
-                
-                async for vision_chunk in call_vision_agent(client, case.case_id, case.clinical_note_text):
-                    # Forward the chunk to frontend immediately
-                    yield f"data: {vision_chunk}\n\n"
-                    
-                    # 🔍 Check if this chunk is the 'final' structured data from the vision agent
-                    try:
-                        chunk_data = json.loads(vision_chunk)
-                        if chunk_data.get("type") == "final":
-                            captured_vision_data = chunk_data
-                            # if "claims" not in captured_vision_data:
-                            #     captured_vision_data["claims"] = [] # 🛡️ CRITICAL: Prevents UI .map() crashes
-                    except:
-                        continue 
-
-                yield yield_json({"type": "thought", "delta": "🎤 Processing Acoustic and Context streams..."})
-                
-                audio_task = call_audio_agent(client, case.case_id)
-                history_task = extract_history_with_medgemma(client, case.clinical_note_text)
-                
-                acoustics, history = await asyncio.gather(audio_task, history_task)
-                yield yield_json({"type": "thought", "delta": "✅ Evidence gathered. Entering Consensus Board..."})
-
-            # ⚖️ CONSENSUS BOARD 
-            # Use the actual 'data_for_consensus' we just captured from the vision stream
-            img_summary = captured_vision_data.get("data_for_consensus", "Imaging analysis complete.") if captured_vision_data else "Imaging analysis complete."
-            
-            aud_txt = acoustics.claims[0].value if acoustics.claims else "No Data"
-            hist_txt = ", ".join([c.value for c in history.claims])
-
-            yield yield_json({"type": "thought", "delta": "⚖️ Adjudicating evidence and resolving discrepancies..."})
-
-            final_consensus_data = None
-
-            # 🟢 PIPE CONSENSUS THOUGHTS: Colab -> Local -> Frontend
-            async for consensus_chunk in call_cloud_consensus(case.case_id, img_summary, aud_txt, hist_txt):
-                try:
-                    chunk_data = json.loads(consensus_chunk)
-                    if chunk_data.get("type") == "thought":
-                        # Forward thoughts immediately to UI "Neural Stream"
-                        yield f"data: {consensus_chunk}\n\n"
-                    elif chunk_data.get("type") == "final":
-                        # Capture the structured final result
-                        final_consensus_data = chunk_data
-                except:
-                    continue
-
-            # 🛡️ Extract consensus fields safely
-            parsed = final_consensus_data.get("parsed", {}) if final_consensus_data else {}
-            score = parsed.get("score", 0.5)
-            reasoning = parsed.get("reasoning", "Consensus bridge disconnected.")
-            recommendation = parsed.get("recommendation", "Manual review required.")
-            audit_markdown = final_consensus_data.get("audit_markdown", "Audit unavailable.") if final_consensus_data else "Cloud error."
-            thought_process = final_consensus_data.get("thought_process", "") if final_consensus_data else "Adjudicator offline."
-            
-            # score, reasoning, recommendation, audit_markdown, thought_process = await asyncio.to_thread(
-            #     call_cloud_consensus, case.case_id, img_summary, aud_txt, hist_txt
-            # )
-
-            level = "high" if score > 0.7 else ("medium" if score > 0.4 else "low")
-            
-            if captured_vision_data:
-                # Start with the data we have
-                imaging_report = {
-                    "agent_name": "imaging",
-                    "model": "MedGemma-2b-Vision",
-                    "analysis_status": "complete",
-                    "internal_logic": captured_vision_data.get("finding", ""),
-                    "draft_findings": captured_vision_data.get("agent_metadata", {}).get("plan", ""),
-                    "supervisor_critique": captured_vision_data.get("agent_metadata", {}).get("recall_data", ""),
-                }
-                
-                # 🛡️ ONLY add empty claims if captured_vision_data doesn't already have them
-                if "claims" in captured_vision_data:
-                    imaging_report["claims"] = captured_vision_data["claims"]
-                else:
-                    imaging_report["claims"] = []
-            else:
-                imaging_report = {
-                    "agent_name": "imaging",
-                    "model": "MedGemma-2b-Vision",
-                    "analysis_status": "failed",
-                    "claims": [], # Safety fallback for failed state
-                    "internal_logic": "No imaging data captured.",
-                    "draft_findings": "",
-                    "supervisor_critique": ""
-                }
-
-            # 🎁 FINAL AGGREGATE PAYLOAD
-            final_res = {
-                "type": "final",
-                "case_id": case.case_id,
-                "discrepancy_alert": {"level": level, "score": score, "summary": reasoning},
-                "recommended_data_actions": [recommendation],
-                "reasoning_trace": [f"Consensus Logic: {thought_process}"],
-                "agent_reports": [
-                    acoustics.dict(), 
-                    history.dict(),
-                    imaging_report  
-                ], 
-                "audit_markdown": audit_markdown,
-                "thought_process": thought_process 
+            payload = {
+                "history": json.dumps([{"role": "user", "content": case.clinical_note_text}])
             }
 
-            yield yield_json(final_res)
+            async with httpx.AsyncClient(timeout=None) as client:
+                # Use the 'files' parameter correctly for multipart upload
+                async with client.stream(
+                    "POST", 
+                    f"{API_URL}/consensus", 
+                    data=payload, 
+                    files=files_payload
+                ) as response:
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            yield f"{line}\n\n"
+                        elif line.strip():
+                            yield f"data: {json.dumps({'type': 'thought', 'delta': line})}\n\n"
 
         except Exception as e:
-            yield yield_json({"type": "error", "message": str(e)})
+            yield f"data: {json.dumps({'type': 'error', 'message': f'Gateway Error: {str(e)}'})}\n\n"
+        finally:
+            # CRITICAL: Close files after the stream finishes
+            for f in opened_files:
+                f.close()
 
-    return StreamingResponse(stream_protocol(), media_type="text/event-stream")
+    return StreamingResponse(stream_protocol(), media_type="text-event-stream")

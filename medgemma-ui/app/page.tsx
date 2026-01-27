@@ -134,52 +134,33 @@ const API_URL = "http://127.0.0.1:8000";
 
 // --- Sub-Component: Neural Thinking Console ---
 const ThinkingConsole = ({ steps }: { steps: string[] }) => {
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [steps]);
-
   return (
-    <div
-      ref={scrollRef}
-      className="w-full max-w-lg bg-[#0a0e14] border border-blue-500/20 rounded-xl p-4 font-mono text-[10px] space-y-2 max-h-48 overflow-y-auto scrollbar-thin shadow-inner shadow-blue-900/10"
-    >
-      <div className="flex items-center gap-2 text-blue-500/60 mb-3 border-b border-blue-500/10 pb-2">
-        <Activity className="w-3 h-3 animate-pulse" />
-        <span className="font-black uppercase tracking-[0.2em]">
-          Neural Evidence Stream
+    <div className="w-full max-w-lg bg-[#05070a] border border-blue-500/30 rounded-xl p-4 font-mono text-[11px] space-y-1 max-h-64 overflow-y-auto shadow-2xl">
+      <div className="flex items-center justify-between border-b border-blue-500/20 pb-2 mb-2">
+        <span className="text-blue-400 font-black tracking-tighter">
+          BLACKBOARD ACTIVE SESSION
         </span>
+        <div className="flex gap-1">
+          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+          <div className="w-1.5 h-1.5 rounded-full bg-blue-500/40" />
+        </div>
       </div>
-
-      <div className="space-y-2">
-        {steps.map((step, i) => (
-          <div key={i} className="flex gap-2">
-            <span className="text-slate-600 shrink-0 select-none">
-              [
-              {new Date().toLocaleTimeString([], {
-                hour12: false,
-                minute: "2-digit",
-                second: "2-digit",
-              })}
-              ]
-            </span>
-            {/* The 'whitespace-pre-wrap' is the secret sauce here */}
-            <span className="text-slate-300 leading-relaxed whitespace-pre-wrap">
-              <span className="text-blue-500/50 mr-1">›</span>
-              {step}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* Blinking cursor at the very end */}
-      <div className="inline-block w-1.5 h-3 bg-blue-500/40 ml-1 animate-pulse" />
+      {steps.map((step, i) => (
+        <div key={i} className="flex gap-2 py-0.5">
+          <span className="text-blue-900 shrink-0">
+            {(i + 1).toString().padStart(2, "0")}
+          </span>
+          <span
+            className={`${step.includes("✅") ? "text-emerald-400" : "text-slate-400"}`}
+          >
+            {step}
+          </span>
+        </div>
+      ))}
     </div>
   );
 };
+
 export const useAegisStream = (API_URL: string) => {
   const [thinkingSteps, setThinkingSteps] = useState<string[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -796,8 +777,24 @@ const DirectivesCard = ({ analysisResult, setShowFullDirectives }: any) => {
 
 // --- Sub-Component: Severity Gauge ---
 const SeverityCard = ({ analysisResult, getSeverity, SEVERITY_MAP }: any) => {
-  const severity = getSeverity(analysisResult.discrepancy_alert.score);
-  const theme = SEVERITY_MAP[severity];
+  /**
+   * SAFETY GUARD: Sanitize the score.
+   * 1. Check if the property exists.
+   * 2. Force it to a number (in case it comes as a string).
+   * 3. Fallback to 0 if it is NaN or undefined to prevent SVG breakage.
+   */
+  const rawScore = analysisResult?.discrepancy_alert?.score;
+  const score =
+    typeof rawScore === "number" && !isNaN(rawScore)
+      ? Math.max(0, Math.min(1, rawScore)) // Clamp between 0 and 1
+      : 0;
+
+  // Derive theme based on sanitized score
+  const severity = getSeverity(score);
+  const theme = SEVERITY_MAP[severity] || SEVERITY_MAP.low; // Fallback to 'low' theme if undefined
+
+  // SVG Constant: Circumference of a circle with r=58 is ~364.4
+  const CIRCUMFERENCE = 364;
 
   return (
     <div className="lg:col-span-3 min-h-full">
@@ -805,14 +802,15 @@ const SeverityCard = ({ analysisResult, getSeverity, SEVERITY_MAP }: any) => {
         className={`h-full border rounded-2xl p-5 flex flex-col items-center justify-center space-y-3 shadow-xl transition-all duration-700 ${theme.bg} ${theme.border}`}
       >
         <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">
-          {" "}
-          Discrepancy Severity{" "}
+          Discrepancy Severity
         </h4>
+
         <div className="relative flex items-center justify-center w-28 h-28">
           <svg
             className="w-full h-full transform -rotate-90 block"
             viewBox="0 0 128 128"
           >
+            {/* Background Track */}
             <circle
               cx="64"
               cy="64"
@@ -822,6 +820,7 @@ const SeverityCard = ({ analysisResult, getSeverity, SEVERITY_MAP }: any) => {
               fill="transparent"
               className="text-slate-800"
             />
+            {/* Animated Progress Gauge */}
             <circle
               cx="64"
               cy="64"
@@ -833,24 +832,26 @@ const SeverityCard = ({ analysisResult, getSeverity, SEVERITY_MAP }: any) => {
               className="transition-all duration-1000 ease-out"
               style={{
                 color: theme.stroke,
-                strokeDasharray: 364,
-                strokeDashoffset:
-                  364 - 364 * analysisResult.discrepancy_alert.score,
+                strokeDasharray: CIRCUMFERENCE,
+                // If score is 0.85, dashoffset is 15% of 364
+                strokeDashoffset: CIRCUMFERENCE - CIRCUMFERENCE * score,
                 filter: `drop-shadow(0 0 6px ${theme.stroke}44)`,
               }}
             />
           </svg>
+
+          {/* Centered Percentage Label */}
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
             <span className={`text-2xl font-black leading-none ${theme.color}`}>
-              {" "}
-              {Math.round(analysisResult.discrepancy_alert.score * 100)}%{" "}
+              {Math.round(score * 100)}%
             </span>
             <span className="text-[7px] font-black text-slate-500 uppercase tracking-tighter mt-1">
-              {" "}
-              Conflict{" "}
+              Conflict
             </span>
           </div>
         </div>
+
+        {/* Severity Status Badge */}
         <p
           className={`text-[8px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${theme.color} ${theme.border}`}
         >
@@ -860,7 +861,6 @@ const SeverityCard = ({ analysisResult, getSeverity, SEVERITY_MAP }: any) => {
     </div>
   );
 };
-
 // --- Sub-Component: Reasoning Trace Node ---
 const LogicNode = ({
   step,
@@ -976,127 +976,103 @@ export default function App() {
       findings: "Pneumothorax risk",
     },
   };
-
   const analyzeCase = async () => {
     setLoading(true);
     setError(null);
     setAnalysisResult(null);
-    // Initial UI state
-    setThinkingSteps(["Initializing Neural Consensus Protocol..."]);
+    setThinkingSteps(["Establishing connection to Clinical Blackboard..."]);
 
     const currentCaseId = mode === "library" ? selectedCase : sessionId;
 
     try {
-      // 1. UPLOAD HANDLING
+      // 1. UPLOAD (Only if in Upload Mode)
       if (mode === "upload") {
         const formData = new FormData();
         if (xrayFile) formData.append("xray", xrayFile);
         if (audioFile) formData.append("audio", audioFile);
 
-        const uploadResponse = await fetch(
-          `${API_URL}/upload/${currentCaseId}`,
-          {
-            method: "POST",
-            body: formData,
-          },
-        );
-
-        if (!uploadResponse.ok) throw new Error("Failed to upload modalities.");
+        const uploadRes = await fetch(`${API_URL}/upload/${currentCaseId}`, {
+          method: "POST",
+          body: formData,
+        });
+        if (!uploadRes.ok) throw new Error("Artifact caching failed.");
+        setThinkingSteps((prev) => [
+          ...prev,
+          "✅ Artifacts cached successfully.",
+        ]);
       }
 
-      // 2. PAYLOAD
-      const payload = {
-        case_id: currentCaseId,
-        clinical_note_text: clinicalHistory,
-        image_current_path:
-          mode === "library"
-            ? `data/cases/${selectedCase}/xray.jpg`
-            : `artifacts/runs/${currentCaseId}/xray.jpg`,
-        audio_current_path:
-          mode === "library"
-            ? `data/cases/${selectedCase}/audio.wav`
-            : `artifacts/runs/${currentCaseId}/audio.wav`,
-      };
-
-      // 3. STREAMING EXECUTION
+      // 2. INITIATE BLACKBOARD RUN
+      // We send the history/note; main.py will pick up the cached files
       const response = await fetch(`${API_URL}/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          case_id: currentCaseId,
+          clinical_note_text: clinicalHistory,
+        }),
       });
 
-      if (!response.ok) throw new Error("Analysis engine failed to respond.");
-      if (!response.body)
-        throw new Error("ReadableStream not supported by browser.");
-
+      if (!response.body) throw new Error("ReadableStream not supported.");
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let buffer = "";
 
+      // 3. LISTEN TO BLACKBOARD UPDATES
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split("\n\n");
-        buffer = parts.pop() || "";
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n\n");
 
-        for (const part of parts) {
-          const cleanLine = part.replace(/^data: /, "").trim();
-          if (!cleanLine) continue;
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const data = JSON.parse(line.replace("data: ", ""));
 
-          try {
-            const data = JSON.parse(cleanLine);
+          if (data.type === "status") {
+            // Update the "Neural Stream" with the Blackboard's current activity
+            setThinkingSteps((prev) => [...prev, data.message]);
+          }
 
-            // --- REFINED STREAMING LOGIC ---
-            if (data.type === "thought" || data.type === "status") {
-              const content = data.delta || data.message;
-              if (content) {
-                setThinkingSteps((prev) => {
-                  // Check if this chunk is a new Phase header/emoji
-                  const isNewPhase = /^[🧠🔍⚖️🚀⚡✅]/.test(content.trim());
+          if (data.type === "final") {
+            const blackboardVerdict = data.parsed;
 
-                  if (prev.length === 0 || isNewPhase) {
-                    // Start a new line in the console
-                    return [...prev, content];
-                  } else {
-                    // Append text to the current line (Paragraph mode)
-                    const updatedSteps = [...prev];
-                    updatedSteps[updatedSteps.length - 1] += content;
-                    return updatedSteps;
-                  }
-                });
-              }
-            }
+            setAnalysisResult({
+              case_id: currentCaseId,
+              discrepancy_alert: {
+                level: blackboardVerdict.confidence > 70 ? "high" : "medium",
+                score:
+                  (parseFloat(String(blackboardVerdict.confidence)) || 0) / 100,
+                summary: `**Suspected:** ${blackboardVerdict.condition}\n\n${blackboardVerdict.consensus_summary}`,
+              },
+              key_contradictions: data.audit_trail.filter((msg: string) =>
+                msg.includes("Conflict"),
+              ),
+              recommended_data_actions:
+                blackboardVerdict.differential_diagnosis || [],
+              reasoning_trace: data.audit_trail || [],
+              agent_reports: [],
 
-            if (data.type === "final") {
-              const validData = {
-                ...data,
-                agent_reports: data.agent_reports || [],
-                key_contradictions: data.key_contradictions || [],
-              };
-              setAnalysisResult(validData);
-              setActiveTab("overview");
-            }
+              // --- ADD THESE TO FIX THE ERROR ---
+              evidence_table: [], // Matches Record<string, any>[]
+              limitations: [
+                "Automated preliminary analysis",
+                "Requires clinician verification",
+              ], // Matches string[]
 
-            if (data.type === "error") {
-              setThinkingSteps((prev) => [
-                ...prev,
-                `❌ BRIDGE FAILURE: ${data.message}`,
-              ]);
-              setError(data.message);
-              setLoading(false);
-              return; // Exit the loop for this chunk
-            }
-          } catch (e) {
-            console.error("Stream parsing error on line:", cleanLine, e);
+              // Optional fields
+              audit_markdown: `### Session Audit\n${data.audit_trail.join("\n")}`,
+              thought_process: data.thought_process || "",
+            });
+
+            setLoading(false);
           }
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Workflow failed.");
-      setThinkingSteps((prev) => [...prev, "❌ Analysis Disrupted"]);
-    } finally {
+      setError(
+        err instanceof Error ? err.message : "Blackboard session crashed.",
+      );
       setLoading(false);
     }
   };
