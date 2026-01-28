@@ -1,1009 +1,65 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
-
 import {
   Activity,
   FileText,
-  Image as ImageIcon,
-  Volume2,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
   Menu,
   X,
-  ChevronRight,
-  ChevronDown,
   Play,
   RotateCcw,
-  Upload,
-  Microscope,
-  Stethoscope,
-  ClipboardList,
-  TrendingUp,
   Shield,
-  Layers,
-  Maximize2,
-  AlertOctagon,
-  Lightbulb,
-  Info,
   ShieldAlert,
-  ArrowRightCircle,
-  Search,
-  ExternalLink,
-  MessageSquare,
-  Pause,
+  Microscope,
+  ClipboardList,
+  AlertOctagon,
+  Layers,
+  Volume2, // ✅ ADD THIS
+  Brain,
 } from "lucide-react";
 
+// Import all types
+import type { AnalysisResult, CaseItem } from "./types";
+
+// Import constants
+import { API_URL, CASES } from "./constants";
+
+// Import utilities
+import { generateSessionId, parseStreamFinalEvent } from "./utils";
+
+// Import components
+import {
+  ThinkingConsole,
+  AgentMetricsPanel,
+  RadiographicCard,
+  AcousticCard,
+  LeadClinicianCard,
+  HistoryCard,
+  VerdictCard,
+  DirectivesCard,
+  SeverityCard,
+} from "./components";
+
 /**
- * MOMO CLINICAL CONSENSUS BOARD - V3.5
- * Refinement: Equal button sizing, unified Directive colors, and Audit Markdown integration.
+ * Custom Hook: Stream Analysis Handler
+ * Manages WebSocket-style streaming of backend events
  */
-
-// --- Interfaces ---
-
-interface EvidenceRef {
-  type:
-    | "metric"
-    | "note_span"
-    | "audio_segment"
-    | "image_ref"
-    | "text"
-    | "vector_embedding";
-  id: string;
-  value?: any;
-}
-
-interface Claim {
-  label: string;
-  value: string;
-  confidence: number;
-  evidence: EvidenceRef[];
-}
-
-interface AgentReport {
-  agent_name: "imaging" | "acoustics" | "history";
-  model: string;
-  claims: Claim[];
-  quality_flags: any[];
-  uncertainties: string[];
-  requested_data: string[];
-}
-
-interface DiscrepancyAlert {
-  level: "none" | "low" | "medium" | "high";
-  score: number;
-  summary: string;
-}
-
-interface AnalysisResult {
-  case_id: string;
-  discrepancy_alert: DiscrepancyAlert;
-  key_contradictions: string[];
-  evidence_table: Record<string, any>[];
-  recommended_data_actions: string[];
-  reasoning_trace: string[];
-  limitations: string[];
-  agent_reports: (AgentReport | VisionReport)[];
-  audit_markdown?: string;
-  thought_process?: string;
-  matrix_details?: Record<string, { description: string; findings: string[] }>;
-}
-// Add these to your interfaces
-/**
- * Aligned with backend VisionReport(BaseModel)
- * Mirrors the Plan -> Execute -> Check Agentic Loop
- */
-interface VisionReport {
-  case_id: string;
-  agent_name: string; // Default: "imaging"
-  model: string; // Default: "MedGemma-2b-Vision"
-
-  /** * Required for ConsensusOutput validation.
-   * Even if empty, this must exist to prevent Pydantic crashes.
-   */
-  claims: Array<{
-    label: string;
-    value: any;
-    [key: string]: any; // Allows for flexible metadata
-  }>;
-
-  // --- Multi-Phase Reasoning Traces ---
-
-  /** Phase 1: Strategic Plan */
-  draft_findings: string;
-
-  /** Phase 2: Sensitive Analysis (High Recall/Noise) */
-  supervisor_critique: string;
-
-  /** Phase 3: Final Clinical Consensus */
-  internal_logic: string;
-
-  /** Status tracker: 'complete' | 'failed' | 'pending' */
-  analysis_status: string;
-}
-
-interface CaseItem {
-  history: string;
-  findings: string;
-}
-
-// --- Constants ---ß
-
-const API_URL = "http://127.0.0.1:8000";
-
-// --- Sub-Component: Neural Thinking Console ---
-const ThinkingConsole = ({ steps }: { steps: string[] }) => {
-  return (
-    <div className="w-full max-w-lg bg-[#05070a] border border-blue-500/30 rounded-xl p-4 font-mono text-[11px] space-y-1 max-h-64 overflow-y-auto shadow-2xl">
-      <div className="flex items-center justify-between border-b border-blue-500/20 pb-2 mb-2">
-        <span className="text-blue-400 font-black tracking-tighter">
-          BLACKBOARD ACTIVE SESSION
-        </span>
-        <div className="flex gap-1">
-          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-          <div className="w-1.5 h-1.5 rounded-full bg-blue-500/40" />
-        </div>
-      </div>
-      {steps.map((step, i) => (
-        <div key={i} className="flex gap-2 py-0.5">
-          <span className="text-blue-900 shrink-0">
-            {(i + 1).toString().padStart(2, "0")}
-          </span>
-          <span
-            className={`${step.includes("✅") ? "text-emerald-400" : "text-slate-400"}`}
-          >
-            {step}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-export const useAegisStream = (API_URL: string) => {
+const useAnalysisStream = () => {
   const [thinkingSteps, setThinkingSteps] = useState<string[]>([]);
+  const [streamingThought, setStreamingThought] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
 
   const streamAnalysis = async (
-    formData: FormData,
-    caseId: string, // Pass the ID here
-    onFinal: (data: AnalysisResult) => void,
+    currentCaseId: string,
+    clinicalHistory: string,
+    onFinal: (result: AnalysisResult) => void,
+    onError: (error: string) => void,
   ) => {
     setIsStreaming(true);
-    setThinkingSteps(["Initializing Neural Connection..."]);
+    setStreamingThought("");
+    setThinkingSteps(["🎯 Establishing connection to Clinical Blackboard..."]);
 
     try {
-      const response = await fetch(`${API_URL}/agent/vision/stream`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      if (!reader) return;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n\n");
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const payload = JSON.parse(line.replace("data: ", ""));
-
-              switch (payload.type) {
-                case "status":
-                case "thought":
-                  setThinkingSteps((prev) => [...prev, payload.message]);
-                  break;
-                case "final":
-                  onFinal({
-                    case_id: caseId,
-                    discrepancy_alert: {
-                      summary: payload.finding,
-                      score: 0.85,
-                      level: "high",
-                    },
-                    agent_reports: [
-                      {
-                        case_id: caseId,
-                        agent_name: "imaging",
-                        model: "MedGemma-2b-Vision",
-                        internal_logic: payload.data_for_consensus,
-                        draft_findings: payload.metadata.plan,
-                        supervisor_critique: payload.metadata.recall_data,
-                        analysis_status: "complete",
-                        claims: [],
-                      },
-                    ],
-                    // --- Satisfying AnalysisResult Interface ---
-                    evidence_table: [],
-                    key_contradictions: [],
-                    limitations: ["Preliminary automated analysis"],
-                    recommended_data_actions: ["Review Adjudication Log"],
-                    reasoning_trace: [
-                      "Phase 1: Strategic Planning",
-                      payload.metadata.plan,
-                      "Phase 2: Sensitive Analysis",
-                      payload.metadata.recall_data,
-                    ],
-                    audit_markdown: payload.finding,
-                    thought_process: payload.data_for_consensus,
-                  });
-                  setIsStreaming(false);
-                  break;
-                case "error":
-                  setThinkingSteps((prev) => [
-                    ...prev,
-                    `❌ Error: ${payload.message}`,
-                  ]);
-                  setIsStreaming(false);
-                  break;
-              }
-            } catch (e) {
-              console.error("Error parsing stream chunk", e);
-            }
-          }
-        }
-      }
-    } catch (err) {
-      setThinkingSteps((prev) => [...prev, "❌ Connection failed."]);
-      setIsStreaming(false);
-    }
-  };
-
-  return { thinkingSteps, isStreaming, streamAnalysis };
-};
-
-// const ThinkingConsole = ({ steps }: { steps: string[] }) => {
-//     const scrollRef = useRef<HTMLDivElement>(null);
-
-//     useEffect(() => {
-//       if (scrollRef.current) {
-//         scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-//       }
-//     }, [steps]);
-
-//     return (
-//       <div
-//         className="bg-[#0a0e14] border border-blue-500/20 rounded-xl p-4 font-mono text-[10px] space-y-2 max-h-48 overflow-y-auto scrollbar-thin"
-//         ref={scrollRef}
-//       >
-//         <div className="flex items-center gap-2 text-blue-500 mb-2">
-//           <Activity className="w-3 h-3 animate-pulse" />
-//           <span className="font-black uppercase tracking-widest">
-//             Neural Stream Active
-//           </span>
-//         </div>
-//         {steps.map((step, i) => (
-//           <div
-//             key={i}
-//             className="flex gap-2 animate-in fade-in slide-in-from-left-2 duration-300"
-//           >
-//             <span className="text-slate-600">
-//               [{new Date().toLocaleTimeString([], { hour12: false })}]
-//             </span>
-//             <span
-//               className={
-//                 step.includes("❌") ? "text-rose-400" : "text-slate-300"
-//               }
-//             >
-//               {step}
-//             </span>
-//           </div>
-//         ))}
-//         <div className="flex gap-2 text-blue-400 animate-pulse">
-//           <span>&gt;</span>
-//           <span className="w-2 h-4 bg-blue-500/50" />
-//         </div>
-//       </div>
-//     );
-//   };
-
-//   return { thinkingSteps, isStreaming, streamAnalysis };
-// };
-
-const SEVERITY_MAP: Record<
-  "low" | "medium" | "high",
-  { color: string; stroke: string; bg: string; border: string }
-> = {
-  low: {
-    color: "text-emerald-500",
-    stroke: "#10b981",
-    bg: "bg-emerald-500/10",
-    border: "border-emerald-500/20",
-  },
-  medium: {
-    color: "text-amber-500",
-    stroke: "#f59e0b",
-    bg: "bg-amber-500/10",
-    border: "border-amber-500/20",
-  },
-  high: {
-    color: "text-rose-500",
-    stroke: "#f43f5e",
-    bg: "bg-rose-500/10",
-    border: "border-rose-500/20",
-  },
-};
-// --- Sub-Component: Radiographic Card ---
-const RadiographicCard = ({
-  xrayFile,
-  analysisResult,
-  setShowImagingModal,
-}: any) => {
-  // 🛡️ Logic to normalize the Vision Agent structure
-  const rawImgReport = analysisResult?.agent_reports?.find(
-    (a: any) => a.agent_name === "imaging" || a.type === "final",
-  );
-
-  // Normalize: Ensure claims exist and map backend 'finding' to 'internal_logic' if needed
-  const imgReport: VisionReport | null = rawImgReport
-    ? {
-        ...rawImgReport,
-        claims: rawImgReport.claims || [],
-        analysis_status:
-          rawImgReport.analysis_status ||
-          (rawImgReport.finding ? "complete" : "pending"),
-        internal_logic:
-          rawImgReport.internal_logic || rawImgReport.finding || "",
-      }
-    : null;
-
-  return (
-    <div className="bg-[#151b26] border border-[#2a3441] hover:border-blue-500/30 rounded-2xl shadow-lg transition-all duration-300">
-      <div className="p-5 flex flex-col h-full">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
-              <ImageIcon className="w-5 h-5 text-blue-400" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-white">
-                Radiographic Analysis
-              </h4>
-              <p className="text-xs text-slate-400">Multi-phase evaluation</p>
-            </div>
-          </div>
-          <span className="text-xs font-bold px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
-            {imgReport?.analysis_status === "complete" ? "Verified" : "Pending"}
-          </span>
-        </div>
-
-        <div className="aspect-square bg-[#0a0e14] rounded-xl flex items-center justify-center border border-[#2a3441] relative overflow-hidden group mb-4">
-          {xrayFile ? (
-            <img
-              src={URL.createObjectURL(xrayFile)}
-              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-              alt="X-Ray"
-            />
-          ) : (
-            <div className="text-center flex flex-col items-center opacity-30">
-              <ImageIcon className="w-16 h-16 mb-3 text-slate-600" />
-              <p className="text-xs font-medium text-slate-500">
-                No imaging uploaded
-              </p>
-            </div>
-          )}
-        </div>
-
-        {!imgReport || imgReport.analysis_status !== "complete" ? (
-          <div className="flex-1 flex flex-col items-center justify-center py-8 space-y-3">
-            <div className="w-5 h-5 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
-            <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest animate-pulse">
-              Awaiting Neural Feedback...
-            </p>
-          </div>
-        ) : (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-            <div className="flex-1 space-y-2 mb-4">
-              {[
-                { label: "Strategic Planning", color: "blue" },
-                { label: "High-Recall Execution", color: "amber" },
-                { label: "Clinical Adjudication", color: "emerald" },
-              ].map((phase) => (
-                <div key={phase.label} className="flex items-center gap-2">
-                  <CheckCircle className={`w-3 h-3 text-${phase.color}-400`} />
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">
-                    {phase.label} Complete
-                  </span>
-                </div>
-              ))}
-
-              <div className="mt-4 pt-4 border-t border-white/5 relative">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                  Final Assessment
-                </p>
-                <div className="relative max-h-32 overflow-hidden">
-                  <div className="text-xs text-slate-400 leading-relaxed prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-strong:text-slate-200">
-                    <ReactMarkdown>
-                      {imgReport.internal_logic || "Synthesizing consensus..."}
-                    </ReactMarkdown>
-                  </div>
-                  {imgReport.internal_logic && (
-                    <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#151b26] to-transparent flex items-end justify-center pb-1">
-                      <span className="text-[9px] font-black text-blue-500/60 uppercase tracking-tighter">
-                        ... click "view full analysis"
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowImagingModal(true)}
-              className="w-full py-2 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/20 rounded-lg text-[10px] font-black text-blue-400 uppercase tracking-widest transition-all flex items-center justify-center gap-2 group mt-2"
-            >
-              <Maximize2 className="w-3 h-3 group-hover:scale-110 transition-transform" />
-              View Full Analysis
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-// --- Sub-Component: Acoustic Card ---
-const AcousticCard = ({
-  audioFile,
-  isAudioPlaying,
-  setIsAudioPlaying,
-  analysisResult,
-}: any) => {
-  // 🛡️ Safe extraction with optional chaining
-  const acousticReport = analysisResult?.agent_reports?.find(
-    (a: any) => a.agent_name === "acoustics",
-  );
-
-  return (
-    <div className="bg-[#151b26] border border-[#2a3441] hover:border-emerald-500/30 rounded-2xl shadow-lg transition-all duration-300">
-      <div className="p-5 flex flex-col h-full">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
-              <Volume2 className="w-5 h-5 text-emerald-400" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-white">
-                Acoustic Analysis
-              </h4>
-              <p className="text-xs text-slate-400">Auscultation findings</p>
-            </div>
-          </div>
-          {/* Added dynamic status badge */}
-          <span
-            className={`text-[9px] font-black px-2 py-0.5 rounded-md border uppercase tracking-tighter ${acousticReport ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-slate-500/5 text-slate-500 border-slate-500/10"}`}
-          >
-            {acousticReport ? "Verified" : "Signal Pending"}
-          </span>
-        </div>
-
-        <div className="bg-[#0a0e14] rounded-xl p-4 border border-[#2a3441] mb-4">
-          {audioFile ? (
-            <div className="space-y-4">
-              <div className="h-16 flex items-end gap-1">
-                {[...Array(32)].map((_, i) => (
-                  <div
-                    key={i}
-                    className={`flex-1 rounded-t transition-all duration-300 ${isAudioPlaying ? "bg-emerald-500/50" : "bg-emerald-500/20"}`}
-                    style={{
-                      height: `${20 + Math.random() * 80}%`,
-                      animationDelay: `${i * 0.03}s`,
-                    }}
-                  />
-                ))}
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  className="w-10 h-10 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 flex items-center justify-center border border-emerald-500/30"
-                  onClick={() => setIsAudioPlaying(!isAudioPlaying)}
-                >
-                  {isAudioPlaying ? (
-                    <Pause className="w-4 h-4 text-emerald-400" />
-                  ) : (
-                    <Play className="w-4 h-4 text-emerald-400 ml-0.5" />
-                  )}
-                </button>
-                <div className="flex-1">
-                  <audio
-                    controls
-                    className="w-full h-8 opacity-60"
-                    src={audioFile ? URL.createObjectURL(audioFile) : ""}
-                  />
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-8 opacity-30">
-              <Volume2 className="w-12 h-12 mb-2 text-slate-600 mx-auto" />
-              <p className="text-xs font-medium text-slate-500">
-                No audio available
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div className="flex-1 space-y-3 overflow-y-auto max-h-[300px] scrollbar-thin">
-          {/* 🛡️ Guard: Check for acousticReport and its claims array specifically */}
-          {!acousticReport || !acousticReport.claims ? (
-            <div className="flex flex-col items-center justify-center py-10 opacity-20">
-              <Activity className="w-6 h-6 mb-2 text-emerald-500 animate-pulse" />
-              <p className="text-[10px] font-black uppercase tracking-widest text-center">
-                Processing Acoustic Evidence...
-              </p>
-            </div>
-          ) : (
-            acousticReport.claims.map((claim: any, i: number) => (
-              <div
-                key={i}
-                className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3 animate-in fade-in slide-in-from-left-2 duration-500"
-                style={{ animationDelay: `${i * 0.1}s` }}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-emerald-400">
-                    Finding {i + 1}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-16 h-1.5 bg-emerald-500/20 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-emerald-500 rounded-full transition-all duration-1000"
-                        style={{ width: `${claim.confidence * 100}%` }}
-                      />
-                    </div>
-                    <span className="text-xs font-medium text-emerald-400">
-                      {Math.round(claim.confidence * 100)}%
-                    </span>
-                  </div>
-                </div>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  {claim.value}
-                </p>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// --- Sub-Component: History Card ---
-const HistoryCard = ({ analysisResult }: any) => {
-  // 🛡️ Safe extraction with optional chaining on the array itself
-  const historyClaims = analysisResult?.agent_reports?.find(
-    (a: any) => a.agent_name === "history",
-  )?.claims;
-
-  return (
-    <div className="bg-[#151b26] border border-[#2a3441] hover:border-amber-500/30 rounded-2xl shadow-lg transition-all duration-300">
-      <div className="p-5 flex flex-col h-full">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
-              <ClipboardList className="w-5 h-5 text-amber-400" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-white">Patient History</h4>
-              <p className="text-xs text-slate-400">Extracted findings</p>
-            </div>
-          </div>
-          {/* Status badge to maintain UI density during streaming */}
-          <span
-            className={`text-[9px] font-black px-2 py-0.5 rounded-md border uppercase tracking-tighter ${historyClaims ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : "bg-slate-500/5 text-slate-500 border-slate-500/10"}`}
-          >
-            {historyClaims ? "Extracted" : "Parsing..."}
-          </span>
-        </div>
-
-        <div className="flex-1 space-y-2 overflow-y-auto max-h-[500px] scrollbar-thin">
-          {/* 🛡️ Guard: Show a placeholder skeleton while historyClaims is undefined */}
-          {!historyClaims ? (
-            <div className="space-y-3 opacity-20">
-              {[...Array(3)].map((_, i) => (
-                <div
-                  key={i}
-                  className="bg-[#0a0e14] border border-amber-500/10 rounded-lg p-4 animate-pulse"
-                >
-                  <div className="h-2 bg-amber-500/20 rounded w-3/4 mb-2" />
-                  <div className="h-2 bg-amber-500/10 rounded w-1/2" />
-                </div>
-              ))}
-              <div className="py-4 text-center">
-                <p className="text-[10px] font-black uppercase tracking-widest text-amber-500/40">
-                  Scanning clinical notes...
-                </p>
-              </div>
-            </div>
-          ) : (
-            historyClaims.map((claim: any, i: number) => (
-              <div
-                key={i}
-                className="bg-[#0a0e14] border border-amber-500/20 rounded-lg p-3 hover:border-amber-500/40 transition-colors animate-in fade-in slide-in-from-right-2 duration-500"
-                style={{ animationDelay: `${i * 0.1}s` }}
-              >
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <span className="text-xs font-bold text-amber-400">
-                      {i + 1}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-300 leading-relaxed flex-1">
-                    {claim.value}
-                  </p>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// --- Sub-Component: Verdict & Contradictions ---
-const VerdictCard = ({ analysisResult, setShowFullVerdict }: any) => {
-  return (
-    <div className="lg:col-span-5 flex flex-col gap-4 min-h-full">
-      <div
-        onClick={() => setShowFullVerdict(true)}
-        className="bg-gradient-to-br from-[#1a212d] to-[#151b26] border border-[#2a3441] p-5 rounded-2xl shadow-xl relative overflow-hidden group cursor-pointer hover:border-blue-500/30 transition-all active:scale-[0.995] flex-1"
-      >
-        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-          <Activity className="w-24 h-24 text-white" />
-        </div>
-        <div className="relative z-10 h-full flex flex-col">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-              <p className="text-[9px] font-black text-blue-400 uppercase tracking-[0.2em]">
-                Adjudicated Verdict
-              </p>
-            </div>
-            <Maximize2 className="w-3 h-3 text-slate-600 group-hover:text-blue-500 transition-colors" />
-          </div>
-
-          <div className="text-sm font-bold text-white leading-relaxed mb-3 flex-1 line-clamp-6 prose prose-invert prose-sm max-w-none">
-            <ReactMarkdown>
-              {analysisResult?.discrepancy_alert?.summary ||
-                "Analysis in progress..."}
-            </ReactMarkdown>
-          </div>
-
-          <div className="flex flex-wrap gap-2 pt-3 border-t border-white/5">
-            {analysisResult?.agent_reports?.map((agent: any, i: number) => (
-              <span
-                key={i}
-                className="px-2 py-0.5 bg-white/5 rounded-md border border-white/10 text-[8px] font-bold text-slate-400 uppercase"
-              >
-                {agent.agent_name || "Specialist"}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {analysisResult.key_contradictions?.length > 0 && (
-        <div className="bg-rose-500/5 border border-rose-500/20 rounded-2xl overflow-hidden shadow-lg p-4 flex flex-col shrink-0">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle className="w-3 h-3 text-rose-500" />
-            <h4 className="text-[9px] font-black text-rose-500 uppercase tracking-widest">
-              Contradictions
-            </h4>
-          </div>
-          <div className="space-y-1.5">
-            {analysisResult.key_contradictions
-              .slice(0, 2)
-              .map((contradiction: string, i: number) => (
-                <p
-                  key={i}
-                  className="text-[10px] text-rose-100/70 leading-tight"
-                >
-                  • {contradiction}
-                </p>
-              ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// --- Sub-Component: Clinical Directives ---
-const DirectivesCard = ({ analysisResult, setShowFullDirectives }: any) => {
-  const actions = analysisResult?.recommended_data_actions ?? [];
-
-  return (
-    <div className="lg:col-span-4 flex flex-col min-h-full">
-      <div
-        onClick={() => setShowFullDirectives(true)}
-        className="bg-gradient-to-br from-[#1a212d] to-[#151b26] border border-[#2a3441] p-5 rounded-2xl shadow-xl relative overflow-hidden group cursor-pointer hover:border-blue-500/30 transition-all active:scale-[0.995] flex-1"
-      >
-        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-          <ArrowRightCircle className="w-24 h-24 text-white" />
-        </div>
-        <div className="relative z-10 h-full flex flex-col">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-              <p className="text-[9px] font-black text-blue-400 uppercase tracking-[0.2em]">
-                Clinical Directives
-              </p>
-            </div>
-            <Maximize2 className="w-3 h-3 text-slate-600 group-hover:text-blue-500 transition-colors" />
-          </div>
-
-          <div className="flex-1 space-y-3 mb-3 overflow-y-auto pr-1 scrollbar-thin max-h-[220px]">
-            {actions.length > 0 ? (
-              actions.map((action: string, i: number) => (
-                <div
-                  key={i}
-                  className="flex gap-2 items-start animate-in fade-in slide-in-from-left-2 duration-300"
-                >
-                  <div className="w-3.5 h-3.5 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5">
-                    <CheckCircle className="w-2.5 h-2.5 text-blue-500" />
-                  </div>
-                  <h2 className="text-sm font-bold text-white leading-relaxed">
-                    {action}
-                  </h2>
-                </div>
-              ))
-            ) : (
-              <div className="flex flex-col items-center justify-center h-32 opacity-20">
-                <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mb-2" />
-                <p className="text-[10px] font-bold uppercase tracking-tighter">
-                  Awaiting directives...
-                </p>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between pt-3 border-t border-white/5">
-            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-              {actions.length} Critical Actions
-            </span>
-            <span className="text-[9px] font-bold text-blue-500 uppercase tracking-widest group-hover:underline">
-              Inspect Protocols
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// --- Sub-Component: Severity Gauge ---
-const SeverityCard = ({ analysisResult, getSeverity, SEVERITY_MAP }: any) => {
-  /**
-   * SAFETY GUARD: Sanitize the score.
-   * 1. Check if the property exists.
-   * 2. Force it to a number (in case it comes as a string).
-   * 3. Fallback to 0 if it is NaN or undefined to prevent SVG breakage.
-   */
-  const rawScore = analysisResult?.discrepancy_alert?.score;
-  const score =
-    typeof rawScore === "number" && !isNaN(rawScore)
-      ? Math.max(0, Math.min(1, rawScore)) // Clamp between 0 and 1
-      : 0;
-
-  // Derive theme based on sanitized score
-  const severity = getSeverity(score);
-  const theme = SEVERITY_MAP[severity] || SEVERITY_MAP.low; // Fallback to 'low' theme if undefined
-
-  // SVG Constant: Circumference of a circle with r=58 is ~364.4
-  const CIRCUMFERENCE = 364;
-
-  return (
-    <div className="lg:col-span-3 min-h-full">
-      <div
-        className={`h-full border rounded-2xl p-5 flex flex-col items-center justify-center space-y-3 shadow-xl transition-all duration-700 ${theme.bg} ${theme.border}`}
-      >
-        <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">
-          Discrepancy Severity
-        </h4>
-
-        <div className="relative flex items-center justify-center w-28 h-28">
-          <svg
-            className="w-full h-full transform -rotate-90 block"
-            viewBox="0 0 128 128"
-          >
-            {/* Background Track */}
-            <circle
-              cx="64"
-              cy="64"
-              r="58"
-              stroke="currentColor"
-              strokeWidth="8"
-              fill="transparent"
-              className="text-slate-800"
-            />
-            {/* Animated Progress Gauge */}
-            <circle
-              cx="64"
-              cy="64"
-              r="58"
-              stroke="currentColor"
-              strokeWidth="8"
-              strokeLinecap="round"
-              fill="transparent"
-              className="transition-all duration-1000 ease-out"
-              style={{
-                color: theme.stroke,
-                strokeDasharray: CIRCUMFERENCE,
-                // If score is 0.85, dashoffset is 15% of 364
-                strokeDashoffset: CIRCUMFERENCE - CIRCUMFERENCE * score,
-                filter: `drop-shadow(0 0 6px ${theme.stroke}44)`,
-              }}
-            />
-          </svg>
-
-          {/* Centered Percentage Label */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-            <span className={`text-2xl font-black leading-none ${theme.color}`}>
-              {Math.round(score * 100)}%
-            </span>
-            <span className="text-[7px] font-black text-slate-500 uppercase tracking-tighter mt-1">
-              Conflict
-            </span>
-          </div>
-        </div>
-
-        {/* Severity Status Badge */}
-        <p
-          className={`text-[8px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${theme.color} ${theme.border}`}
-        >
-          {severity} Alert
-        </p>
-      </div>
-    </div>
-  );
-};
-// --- Sub-Component: Reasoning Trace Node ---
-const LogicNode = ({
-  step,
-  index,
-  isLast,
-}: {
-  step: string;
-  index: number;
-  isLast: boolean;
-}) => (
-  <div className="flex gap-6 p-6 bg-[#151b26] border border-[#2a3441] rounded-2xl items-start relative group hover:bg-[#1a212d] transition-all">
-    {!isLast && (
-      <div className="absolute left-9 top-14 bottom-0 w-px bg-[#2a3441] group-last:hidden" />
-    )}
-    <div className="shrink-0 w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-[11px] font-black text-blue-500 relative z-10 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-      {index + 1}
-    </div>
-    <div className="pt-1 space-y-2 flex-1">
-      <div className="text-xs text-slate-200 leading-relaxed font-medium prose prose-invert prose-sm max-w-none prose-p:leading-relaxed">
-        <ReactMarkdown>{step}</ReactMarkdown>
-      </div>
-      <div className="flex gap-4">
-        <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">
-          Validated Logic Node
-        </span>
-      </div>
-    </div>
-  </div>
-);
-
-// --- Sub-Component: Clinical Audit Log ---
-const AuditLogBlock = ({ content }: { content: string }) => (
-  <div className="p-8 bg-emerald-500/5 border border-emerald-500/20 rounded-3xl relative overflow-hidden">
-    <div className="absolute top-0 right-0 p-8 opacity-10">
-      <CheckCircle className="w-16 h-16 text-emerald-500" />
-    </div>
-    <h4 className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3">
-      <Stethoscope className="w-4 h-4" /> Clinical Audit Log
-    </h4>
-    <div className="text-sm text-slate-300 leading-relaxed italic font-medium prose prose-invert prose-sm max-w-none">
-      <ReactMarkdown>{content}</ReactMarkdown>
-    </div>
-  </div>
-);
-
-// --- Sub-Component: Internal Analysis Logic ---
-const ThoughtProcessBlock = ({ content }: { content: string }) => (
-  <div className="p-8 bg-blue-500/5 border border-blue-500/20 rounded-3xl relative overflow-hidden">
-    <div className="absolute top-0 right-0 p-8 opacity-10">
-      <Activity className="w-16 h-16 text-blue-500" />
-    </div>
-    <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3">
-      <Layers className="w-4 h-4" /> Internal Analysis Logic
-    </h4>
-    <div className="text-xs text-slate-400 leading-relaxed italic font-medium max-h-[400px] overflow-y-auto pr-4 scrollbar-thin prose prose-invert prose-sm max-w-none prose-p:leading-relaxed">
-      <ReactMarkdown>{content}</ReactMarkdown>
-    </div>
-  </div>
-);
-// --- Main Application ---
-
-export default function App() {
-  const [thinkingSteps, setThinkingSteps] = useState<string[]>([]);
-  const [showImagingModal, setShowImagingModal] = useState(false);
-  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
-  const [selectedPhase, setSelectedPhase] = useState<string | null>(null);
-
-  const [selectedCase, setSelectedCase] = useState<string>("CASE_A-2401");
-  const [sessionId, setSessionId] = useState(
-    `UPLOAD-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
-  );
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(
-    null,
-  );
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState("overview");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [mode, setMode] = useState<"library" | "upload">("library");
-
-  const [selectedCellDetail, setSelectedCellDetail] = useState<{
-    agent: string;
-    category: string;
-    value: number;
-    description: string;
-    findings: string[];
-  } | null>(null);
-
-  const [showFullVerdict, setShowFullVerdict] = useState(false);
-  const [showFullDirectives, setShowFullDirectives] = useState(false);
-
-  const [clinicalHistory, setClinicalHistory] = useState("");
-  const [xrayFile, setXrayFile] = useState<File | null>(null);
-  const [audioFile, setAudioFile] = useState<File | null>(null);
-
-  const xrayInputRef = useRef<HTMLInputElement>(null);
-  const audioInputRef = useRef<HTMLInputElement>(null);
-
-  const cases: Record<string, CaseItem> = {
-    "CASE_A-2401": {
-      history:
-        "72yo Male, history of COPD and HF. Presents with productive cough and fever. Decreased breath sounds at right base.",
-      findings: "Pneumonia vs Heart Failure",
-    },
-    "CASE_B-9920": {
-      history:
-        "45yo Female, non-smoker. Persistent dry cough for 2 months. Sharp localized chest pain.",
-      findings: "Inconclusive - Requires further imaging",
-    },
-    "CASE_C-1033": {
-      history:
-        "29yo Male, athlete. Sudden onset dyspnea during exercise. Normal vitals except slight tachycardia.",
-      findings: "Pneumothorax risk",
-    },
-  };
-  const analyzeCase = async () => {
-    setLoading(true);
-    setError(null);
-    setAnalysisResult(null);
-    setThinkingSteps(["Establishing connection to Clinical Blackboard..."]);
-
-    const currentCaseId = mode === "library" ? selectedCase : sessionId;
-
-    try {
-      // 1. UPLOAD (Only if in Upload Mode)
-      if (mode === "upload") {
-        const formData = new FormData();
-        if (xrayFile) formData.append("xray", xrayFile);
-        if (audioFile) formData.append("audio", audioFile);
-
-        const uploadRes = await fetch(`${API_URL}/upload/${currentCaseId}`, {
-          method: "POST",
-          body: formData,
-        });
-        if (!uploadRes.ok) throw new Error("Artifact caching failed.");
-        setThinkingSteps((prev) => [
-          ...prev,
-          "✅ Artifacts cached successfully.",
-        ]);
-      }
-
-      // 2. INITIATE BLACKBOARD RUN
-      // We send the history/note; main.py will pick up the cached files
       const response = await fetch(`${API_URL}/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1013,11 +69,11 @@ export default function App() {
         }),
       });
 
-      if (!response.body) throw new Error("ReadableStream not supported.");
+      if (!response.body) throw new Error("Stream not supported.");
+
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
 
-      // 3. LISTEN TO BLACKBOARD UPDATES
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -1027,60 +83,138 @@ export default function App() {
 
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
-          const data = JSON.parse(line.replace("data: ", ""));
 
-          if (data.type === "status") {
-            // Update the "Neural Stream" with the Blackboard's current activity
-            setThinkingSteps((prev) => [...prev, data.message]);
-          }
+          try {
+            const data = JSON.parse(line.replace("data: ", ""));
+            const dataType = data.type || "";
 
-          if (data.type === "final") {
-            const blackboardVerdict = data.parsed;
+            switch (dataType) {
+              case "status": {
+                const msg = data.message || "";
+                const metadata = data.metadata || {};
+                let enrichedMsg = msg;
 
-            setAnalysisResult({
-              case_id: currentCaseId,
-              discrepancy_alert: {
-                level: blackboardVerdict.confidence > 70 ? "high" : "medium",
-                score:
-                  (parseFloat(String(blackboardVerdict.confidence)) || 0) / 100,
-                summary: `**Suspected:** ${blackboardVerdict.condition}\n\n${blackboardVerdict.consensus_summary}`,
-              },
-              key_contradictions: data.audit_trail.filter((msg: string) =>
-                msg.includes("Conflict"),
-              ),
-              recommended_data_actions:
-                blackboardVerdict.differential_diagnosis || [],
-              reasoning_trace: data.audit_trail || [],
-              agent_reports: [],
+                if (metadata.findings_count !== undefined) {
+                  enrichedMsg = `${msg} [${metadata.findings_count} findings]`;
+                }
+                if (metadata.focus_areas && metadata.focus_areas.length > 0) {
+                  enrichedMsg += ` 🎯 Focus: ${metadata.focus_areas.join(", ")}`;
+                }
+                setThinkingSteps((prev) => [...prev, enrichedMsg]);
+                break;
+              }
 
-              // --- ADD THESE TO FIX THE ERROR ---
-              evidence_table: [], // Matches Record<string, any>[]
-              limitations: [
-                "Automated preliminary analysis",
-                "Requires clinician verification",
-              ], // Matches string[]
+              case "agent_start": {
+                const agentName = data.agent || "Agent";
+                const agentIcons: Record<string, string> = {
+                  AudioAgent: "🎤",
+                  VisionAgent: "👁️",
+                  LeadClinician: "🧠",
+                };
+                const icon = agentIcons[agentName] || "🤖";
+                setThinkingSteps((prev) => [
+                  ...prev,
+                  `${icon} ${agentName} analysis initiated...`,
+                ]);
+                break;
+              }
 
-              // Optional fields
-              audit_markdown: `### Session Audit\n${data.audit_trail.join("\n")}`,
-              thought_process: data.thought_process || "",
-            });
+              case "agent_complete": {
+                const agentName = data.agent || "Agent";
+                setThinkingSteps((prev) => [
+                  ...prev,
+                  `✅ ${agentName} completed successfully`,
+                ]);
+                break;
+              }
 
-            setLoading(false);
+              case "thought": {
+                const token = data.delta || "";
+                setStreamingThought((prev) => prev + token);
+                break;
+              }
+
+              case "final": {
+                // ✅ USE THE FIXED PARSING FUNCTION
+                const finalResult = parseStreamFinalEvent(data, currentCaseId);
+                onFinal(finalResult);
+                setStreamingThought("");
+                setThinkingSteps((prev) => [
+                  ...prev,
+                  `🏁 Analysis complete: ${finalResult.agent_reports.length} agents contributed`,
+                ]);
+                setIsStreaming(false);
+                break;
+              }
+
+              case "error": {
+                const errorMsg = data.message || "Unknown error occurred";
+                setThinkingSteps((prev) => [...prev, `❌ Error: ${errorMsg}`]);
+                onError(errorMsg);
+                setIsStreaming(false);
+                break;
+              }
+            }
+          } catch (parseError) {
+            console.warn("Failed to parse stream data:", parseError);
+            continue;
           }
         }
       }
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Blackboard session crashed.",
-      );
-      setLoading(false);
+      const errorMessage =
+        err instanceof Error ? err.message : "Analysis session crashed";
+      onError(errorMessage);
+      setThinkingSteps((prev) => [...prev, `💥 Fatal Error: ${errorMessage}`]);
+      setIsStreaming(false);
     }
   };
 
+  return { thinkingSteps, streamingThought, isStreaming, streamAnalysis };
+};
+
+export default function App() {
+  // State Management
+  const [selectedCase, setSelectedCase] = useState<string>("CASE_A-2401");
+  const [sessionId, setSessionId] = useState(generateSessionId());
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(
+    null,
+  );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("overview");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mode, setMode] = useState<"library" | "upload">("library");
+
+  // Modal states (add these two new ones)
+  const [showImagingModal, setShowImagingModal] = useState(false);
+  const [showAcousticModal, setShowAcousticModal] = useState(false);
+  const [showClinicianModal, setShowClinicianModal] = useState(false);
+  const [showFullVerdict, setShowFullVerdict] = useState(false);
+  const [showFullDirectives, setShowFullDirectives] = useState(false);
+
+  // Audio state
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+
+  // Clinical data
+  const [clinicalHistory, setClinicalHistory] = useState("");
+  const [xrayFile, setXrayFile] = useState<File | null>(null);
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+
+  // Refs
+  const xrayInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
+
+  // Custom hook
+  const { thinkingSteps, streamingThought, isStreaming, streamAnalysis } =
+    useAnalysisStream();
+
+  // Effect: Reset clinical history when case/mode changes
   useEffect(() => {
     setClinicalHistory("");
   }, [selectedCase, mode]);
 
+  // Event Handlers
   const handleXrayChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1130,514 +264,71 @@ export default function App() {
     setAudioFile(null);
     setMode("library");
     setError(null);
-    setSelectedCellDetail(null);
     setShowFullVerdict(false);
     setShowFullDirectives(false);
-    setSessionId(
-      `UPLOAD-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
-    );
+    setShowImagingModal(false);
+    setSessionId(generateSessionId());
   };
 
-  const getSeverity = (score: number): "low" | "medium" | "high" => {
-    if (score > 0.7) return "high";
-    if (score > 0.4) return "medium";
-    return "low";
-  };
+  /**
+   * Main Analysis Function
+   * Handles file uploads and initiates streaming analysis
+   */
+  const analyzeCase = async () => {
+    setLoading(true);
+    setError(null);
+    setAnalysisResult(null);
 
-  const HeatmapTile = ({ value, agent, category, onClick }: any) => {
-    const getBgColor = (val: number) => {
-      if (val > 0.8) return "bg-blue-600";
-      if (val > 0.6) return "bg-blue-500";
-      if (val > 0.4) return "bg-blue-400";
-      if (val > 0.2) return "bg-slate-600";
-      return "bg-slate-700";
-    };
+    const currentCaseId = mode === "library" ? selectedCase : sessionId;
 
-    return (
-      <button
-        onClick={() => onClick(agent, category, value)}
-        className={`group relative h-7 w-full rounded-sm transition-all duration-300 ${getBgColor(value)} hover:ring-2 hover:ring-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500`}
-        style={{ opacity: Math.max(0.2, value) }}
-      >
-        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-          <Maximize2 className="w-2.5 h-2.5 text-white" />
-        </div>
-      </button>
-    );
-  };
+    try {
+      // 1. UPLOAD PHASE (if in upload mode)
+      if (mode === "upload") {
+        const formData = new FormData();
+        if (xrayFile) formData.append("xray", xrayFile);
+        if (audioFile) formData.append("audio", audioFile);
 
-  const ConfidenceHeatmap = () => {
-    const categories = ["Consolidation", "Effusion", "Airway", "Risk Factor"];
+        const uploadRes = await fetch(`${API_URL}/upload/${currentCaseId}`, {
+          method: "POST",
+          body: formData,
+        });
 
-    // 🛡️ Safe Matrix Calculation: Prevents "undefined" crashes
-    const matrix = analysisResult?.agent_reports?.map((agent) => {
-      // Ensure claims exists, even if the backend omitted it
-      const safeClaims = (agent as any).claims || [];
+        if (!uploadRes.ok) throw new Error("Artifact caching failed.");
+      }
 
-      return categories.map((cat) => {
-        const specificClaim = safeClaims.find(
-          (c: any) =>
-            c.label?.toLowerCase().includes(cat.toLowerCase()) ||
-            c.value?.toLowerCase().includes(cat.toLowerCase()),
-        );
-        // Fallback: If no claim matches, return a default low confidence (0.1)
-        // if it's the imaging agent, or 0 for others.
-        return specificClaim
-          ? specificClaim.confidence
-          : agent.agent_name === "imaging"
-            ? 0.9
-            : 0;
-      });
-    }) || [
-      [0, 0, 0, 0],
-      [0, 0, 0, 0],
-      [0, 0, 0, 0],
-    ];
-
-    const handleTileClick = (
-      agent: string,
-      category: string,
-      value: number,
-    ) => {
-      const detail = analysisResult?.matrix_details?.[`${agent}-${category}`];
-      setSelectedCellDetail({
-        agent,
-        category,
-        value,
-        description:
-          detail?.description ||
-          `The ${agent} agent identified clinical markers associated with ${category} with ${Math.round(value * 100)}% confidence.`,
-        findings: detail?.findings || [
-          "Primary feature extraction verified",
-          "Contextual alignment confirmed",
-        ],
-      });
-    };
-
-    if (
-      !analysisResult?.agent_reports ||
-      analysisResult.agent_reports.length === 0
-    ) {
-      return (
-        <div className="bg-[#151b26] border border-[#2a3441] rounded-xl p-8 flex flex-col items-center justify-center opacity-30">
-          <Layers className="w-8 h-8 mb-2 text-slate-600 animate-pulse" />
-          <p className="text-[10px] font-black uppercase tracking-[0.2em]">
-            Generating Confidence Matrix...
-          </p>
-        </div>
+      // 2. STREAM ANALYSIS
+      await streamAnalysis(
+        currentCaseId,
+        clinicalHistory,
+        (result) => {
+          setAnalysisResult(result);
+          setLoading(false);
+        },
+        (errorMsg) => {
+          setError(errorMsg);
+          setLoading(false);
+        },
       );
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Analysis failed";
+      setError(errorMessage);
+      setLoading(false);
     }
-
-    return (
-      <div className="bg-[#151b26] border border-[#2a3441] rounded-xl p-5 shadow-sm relative animate-in fade-in duration-500">
-        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-          <Layers className="w-3 h-3" /> Consensus Confidence Matrix
-        </h4>
-        <div className="grid grid-cols-[100px_1fr] gap-4">
-          <div className="space-y-2">
-            <div className="h-7" />
-            {analysisResult?.agent_reports?.map((agent: any, i: number) => (
-              <div
-                key={i}
-                className="h-7 flex items-center text-[10px] font-bold text-slate-500 uppercase"
-              >
-                {agent.agent_name || "Agent"}
-              </div>
-            ))}
-          </div>
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              {categories.map((cat, i) => (
-                <div
-                  key={i}
-                  className="flex-1 text-[9px] text-center font-bold text-slate-600 uppercase truncate"
-                >
-                  {cat}
-                </div>
-              ))}
-            </div>
-            {analysisResult?.agent_reports?.map((agent: any, i: number) => (
-              <div key={i} className="flex gap-2">
-                {matrix[i]?.map((val: number, j: number) => (
-                  <HeatmapTile
-                    key={j}
-                    value={val}
-                    agent={agent.agent_name || "Agent"}
-                    category={categories[j]}
-                    onClick={handleTileClick}
-                  />
-                ))}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
   };
 
-  const ImagingAnalysisModal = () => {
-    if (!showImagingModal || !analysisResult) return null;
-
-    const imgReport = analysisResult?.agent_reports?.find(
-      (a: any) => a.agent_name === "imaging",
-    ) as VisionReport | undefined;
-
-    if (!imgReport) return null;
-
-    // Helper to handle dynamic Tailwind colors safely
-    const colorMap = {
-      blue: "border-blue-500/30 bg-blue-500/5 text-blue-400 icon-bg-blue-500/10",
-      amber:
-        "border-amber-500/30 bg-amber-500/5 text-amber-400 icon-bg-amber-500/10",
-      emerald:
-        "border-emerald-500/30 bg-emerald-500/5 text-emerald-400 icon-bg-emerald-500/10",
-    };
-
-    const phases = [
-      {
-        id: "phase1",
-        title: "Strategic Planning",
-        subtitle: "Initial Assessment",
-        content: imgReport.draft_findings,
-        colorKey: "blue" as const,
-        icon: "📋",
-      },
-      {
-        id: "phase2",
-        title: "High-Recall Execution",
-        subtitle: "Detailed Review",
-        content: imgReport.supervisor_critique,
-        colorKey: "amber" as const,
-        icon: "🔍",
-      },
-      {
-        id: "phase3",
-        title: "Clinical Adjudication",
-        subtitle: "Final Consensus",
-        content: imgReport.internal_logic,
-        colorKey: "emerald" as const,
-        icon: "✓",
-      },
-    ];
-
-    return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-        <div
-          className="absolute inset-0 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300"
-          onClick={() => setShowImagingModal(false)}
-        />
-        <div className="relative w-full max-w-4xl bg-[#151b26] border border-blue-500/30 rounded-2xl shadow-2xl max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-blue-600/20 to-transparent p-6 border-b border-[#2a3441] flex justify-between items-start sticky top-0 z-10 backdrop-blur-sm">
-            <div className="flex items-center gap-3">
-              <ImageIcon className="w-5 h-5 text-blue-400" />
-              <div>
-                <h3 className="text-sm font-black text-white uppercase tracking-widest">
-                  Radiographic Analysis - Full Report
-                </h3>
-                <p className="text-xs text-slate-400 mt-1">
-                  Complete multi-phase evaluation
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowImagingModal(false)}
-              className="p-1 hover:bg-white/10 rounded-lg transition-colors text-slate-400"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Content */}
-          <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
-            {/* X-Ray Image */}
-            {xrayFile && (
-              <div className="aspect-video bg-[#0a0e14] rounded-xl overflow-hidden border border-[#2a3441] mb-6">
-                <img
-                  src={URL.createObjectURL(xrayFile)}
-                  className="w-full h-full object-contain"
-                  alt="X-Ray Full View"
-                />
-              </div>
-            )}
-
-            {/* Analysis Phases */}
-            <div className="space-y-4">
-              {phases.map((phase) => {
-                const colors = colorMap[phase.colorKey];
-                return (
-                  <div
-                    key={phase.id}
-                    className={`border rounded-xl p-5 ${colors.split(" ").slice(0, 2).join(" ")}`}
-                  >
-                    <div className="flex items-center gap-3 mb-4">
-                      <div
-                        className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${colors.split(" ")[3].replace("icon-bg-", "")}`}
-                      >
-                        {phase.icon}
-                      </div>
-                      <div>
-                        <h5
-                          className={`text-sm font-bold ${colors.split(" ")[2]}`}
-                        >
-                          {phase.title}
-                        </h5>
-                        <p className="text-xs text-slate-400">
-                          {phase.subtitle}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Markdown Renderer Section */}
-                    <div className="text-sm text-slate-300 leading-relaxed prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-headings:text-slate-200 prose-li:my-0">
-                      <ReactMarkdown>
-                        {phase.content || "*No data available for this phase.*"}
-                      </ReactMarkdown>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Case Metadata */}
-            <div className="mt-6 bg-slate-500/5 p-5 rounded-xl border border-slate-500/10">
-              <div className="flex items-center gap-2 mb-3">
-                <FileText className="w-4 h-4 text-slate-400" />
-                <span className="text-xs font-black text-slate-400 uppercase tracking-wider">
-                  Analysis Metadata
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <span className="text-slate-500">Model:</span>
-                  <span className="text-slate-300 ml-2">{imgReport.model}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500">Status:</span>
-                  <span className="text-emerald-400 ml-2">
-                    {imgReport.analysis_status}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="p-4 bg-[#0a0e14]/50 border-t border-[#2a3441] flex justify-end sticky bottom-0 backdrop-blur-sm">
-            <button
-              onClick={() => setShowImagingModal(false)}
-              className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-black uppercase tracking-widest transition-all"
-            >
-              Close Analysis
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const VerdictModal = () => {
-    if (!showFullVerdict || !analysisResult) return null;
-    return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-        <div
-          className="absolute inset-0 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300"
-          onClick={() => setShowFullVerdict(false)}
-        />
-        <div className="relative w-full max-w-2xl bg-[#151b26] border border-blue-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-          <div className="bg-gradient-to-r from-blue-600/20 to-transparent p-6 border-b border-[#2a3441] flex justify-between items-start">
-            <div className="flex items-center gap-3">
-              <ShieldAlert className="w-5 h-5 text-blue-500" />
-              <h3 className="text-sm font-black text-white uppercase tracking-widest">
-                Adjudicated Consensus Verdict
-              </h3>
-            </div>
-            <button
-              onClick={() => setShowFullVerdict(false)}
-              className="p-1 hover:bg-white/10 rounded-lg transition-colors text-slate-400"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          <div className="p-8 space-y-6">
-            <p className="text-lg text-slate-200 leading-relaxed font-medium">
-              {analysisResult.discrepancy_alert.summary}
-            </p>
-            {analysisResult.thought_process && (
-              <div className="pt-6 border-t border-[#2a3441]">
-                <div className="flex items-center gap-2 mb-3 text-[10px] font-black text-blue-400 uppercase tracking-widest">
-                  <Activity className="w-3.5 h-3.5" /> Internal Analysis Logic
-                </div>
-                <div className="text-sm text-slate-400 leading-relaxed italic whitespace-pre-wrap max-h-[300px] overflow-y-auto pr-4 scrollbar-thin">
-                  {analysisResult.thought_process}
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="p-4 bg-[#0a0e14]/50 border-t border-[#2a3441] flex justify-end">
-            <button
-              onClick={() => setShowFullVerdict(false)}
-              className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-black uppercase tracking-widest transition-all"
-            >
-              Close Verdict
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const DirectivesModal = () => {
-    if (!showFullDirectives || !analysisResult) return null;
-    return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-        <div
-          className="absolute inset-0 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300"
-          onClick={() => setShowFullDirectives(false)}
-        />
-        <div className="relative w-full max-w-2xl bg-[#151b26] border border-blue-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-          <div className="bg-gradient-to-r from-blue-600/20 to-transparent p-6 border-b border-[#2a3441] flex justify-between items-start">
-            <div className="flex items-center gap-3">
-              <ArrowRightCircle className="w-5 h-5 text-blue-500" />
-              <h3 className="text-sm font-black text-white uppercase tracking-widest">
-                Recommended Clinical Actions
-              </h3>
-            </div>
-            <button
-              onClick={() => setShowFullDirectives(false)}
-              className="p-1 hover:bg-white/10 rounded-lg transition-colors text-slate-400"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          <div className="p-8 space-y-4">
-            {analysisResult.recommended_data_actions?.map((action, i) => (
-              <div
-                key={i}
-                className="flex gap-4 items-start p-4 bg-[#0a0e14] border border-[#2a3441] rounded-xl hover:border-blue-500/30 transition-colors group"
-              >
-                <div className="w-6 h-6 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5 group-hover:bg-blue-500/20 transition-colors">
-                  <CheckCircle className="w-3.5 h-3.5 text-blue-500" />
-                </div>
-                <p className="text-sm text-slate-200 leading-relaxed font-medium">
-                  {action}
-                </p>
-              </div>
-            ))}
-          </div>
-          <div className="p-4 bg-[#0a0e14]/50 border-t border-[#2a3441] flex justify-end">
-            <button
-              onClick={() => setShowFullDirectives(false)}
-              className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-black uppercase tracking-widest transition-all"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const CellDetailModal = () => {
-    if (!selectedCellDetail) return null;
-    return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-        <div
-          className="absolute inset-0 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300"
-          onClick={() => setSelectedCellDetail(null)}
-        />
-        <div className="relative w-full max-w-lg bg-[#151b26] border border-blue-500/30 rounded-2xl shadow-2xl shadow-blue-900/40 overflow-hidden animate-in zoom-in-95 duration-200">
-          <div className="bg-gradient-to-r from-blue-600/20 to-transparent p-6 border-b border-[#2a3441] flex justify-between items-start">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-[10px] font-black text-blue-500 uppercase tracking-[0.2em]">
-                  Matrix Drilldown
-                </span>
-                <span className="w-1 h-1 rounded-full bg-slate-600" />
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  {selectedCellDetail.agent}
-                </span>
-              </div>
-              <h3 className="text-xl font-bold text-white capitalize">
-                {selectedCellDetail.category} Analysis
-              </h3>
-            </div>
-            <button
-              onClick={() => setSelectedCellDetail(null)}
-              className="p-1 hover:bg-white/10 rounded-lg transition-colors text-slate-400"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          <div className="p-6 space-y-6">
-            <div className="flex items-center justify-between p-4 bg-blue-500/5 rounded-xl border border-blue-500/20">
-              <div className="flex flex-col">
-                <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1">
-                  Confidence Score
-                </span>
-                <span className="text-2xl font-black text-white">
-                  {Math.round(selectedCellDetail.value * 100)}%
-                </span>
-              </div>
-              <Activity className="w-8 h-8 text-blue-500/30" />
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                <MessageSquare className="w-3.5 h-3.5" /> Agent Rationale
-              </div>
-              <p className="text-sm text-slate-300 leading-relaxed italic">
-                "{selectedCellDetail.description}"
-              </p>
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                <Search className="w-3.5 h-3.5" /> Evidence Indicators
-              </div>
-              <div className="grid grid-cols-1 gap-2">
-                {selectedCellDetail.findings.map((f, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 px-3 py-2 bg-[#0a0e14] border border-[#2a3441] rounded-lg"
-                  >
-                    <CheckCircle className="w-3.5 h-3.5 text-blue-500" />
-                    <span className="text-[11px] text-slate-400 font-medium">
-                      {f}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="p-4 bg-[#0a0e14]/50 border-t border-[#2a3441] flex justify-end gap-3">
-            <button
-              onClick={() => setSelectedCellDetail(null)}
-              className="px-4 py-2 bg-[#1a212d] hover:bg-[#232b3a] text-slate-300 rounded-lg text-xs font-bold transition-all"
-            >
-              Dismiss
-            </button>
-            <button className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all">
-              <ExternalLink className="w-3 h-3" /> Trace Source
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-  const togglePhase = (phaseId: string) => {
-    setSelectedPhase(selectedPhase === phaseId ? null : phaseId);
-  };
+  // Continued in Part 3...
 
   return (
     <div className="min-h-screen bg-[#0a0e14] text-slate-200 flex overflow-hidden selection:bg-blue-500/30">
-      <CellDetailModal />
-      <VerdictModal />
-      <ImagingAnalysisModal />
-      <DirectivesModal />
-
+      {/* Sidebar */}
       <aside
-        className={`transition-all duration-300 ease-in-out bg-[#151b26] border-r border-[#2a3441] flex flex-col z-20 shrink-0 ${sidebarOpen ? "w-72" : "w-0 overflow-hidden border-none"}`}
+        className={`transition-all duration-300 ease-in-out bg-[#151b26] border-r border-[#2a3441] flex flex-col z-20 shrink-0 ${
+          sidebarOpen ? "w-72" : "w-0 overflow-hidden border-none"
+        }`}
       >
         <div className="flex flex-col h-full min-w-[18rem]">
+          {/* Sidebar Header */}
           <div className="p-4 border-b border-[#2a3441] flex items-center gap-3 shrink-0">
             <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center shrink-0 shadow-lg shadow-blue-900/20">
               <Shield className="w-5 h-5 text-white" />
@@ -1651,22 +342,35 @@ export default function App() {
               </p>
             </div>
           </div>
+
+          {/* Sidebar Content */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             <section className="space-y-4">
+              {/* Mode Toggle */}
               <div className="grid grid-cols-2 bg-[#0a0e14] p-1 rounded-lg border border-[#2a3441]">
                 <button
                   onClick={() => setMode("library")}
-                  className={`py-1.5 text-[10px] font-black rounded-md transition-all ${mode === "library" ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-300"}`}
+                  className={`py-1.5 text-[10px] font-black rounded-md transition-all ${
+                    mode === "library"
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "text-slate-500 hover:text-slate-300"
+                  }`}
                 >
                   LIBRARY
                 </button>
                 <button
                   onClick={() => setMode("upload")}
-                  className={`py-1.5 text-[10px] font-black rounded-md transition-all ${mode === "upload" ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-300"}`}
+                  className={`py-1.5 text-[10px] font-black rounded-md transition-all ${
+                    mode === "upload"
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "text-slate-500 hover:text-slate-300"
+                  }`}
                 >
                   NEW CASE
                 </button>
               </div>
+
+              {/* Case Selection / File Upload */}
               {mode === "library" ? (
                 <div>
                   <label className="block text-[9px] font-black text-slate-500 uppercase mb-1.5 tracking-widest">
@@ -1677,7 +381,7 @@ export default function App() {
                     onChange={(e) => setSelectedCase(e.target.value)}
                     className="w-full bg-[#1a212d] border border-[#2a3441] rounded-lg px-2.5 py-2 text-xs text-white outline-none cursor-pointer focus:border-blue-500/50"
                   >
-                    {Object.keys(cases).map((c) => (
+                    {Object.keys(CASES).map((c) => (
                       <option key={c} value={c}>
                         {c}
                       </option>
@@ -1693,10 +397,16 @@ export default function App() {
                     <div className="flex flex-col gap-1 w-full">
                       <button
                         onClick={() => xrayInputRef.current?.click()}
-                        className={`flex flex-col items-center justify-center gap-1.5 bg-[#1a212d] border rounded-lg p-2.5 text-[10px] transition-all ${xrayFile ? "border-blue-500 bg-blue-500/5" : "border-[#2a3441] hover:border-blue-500/50"}`}
+                        className={`flex flex-col items-center justify-center gap-1.5 bg-[#1a212d] border rounded-lg p-2.5 text-[10px] transition-all ${
+                          xrayFile
+                            ? "border-blue-500 bg-blue-500/5"
+                            : "border-[#2a3441] hover:border-blue-500/50"
+                        }`}
                       >
-                        <ImageIcon
-                          className={`w-3.5 h-3.5 ${xrayFile ? "text-blue-400" : "text-slate-500"}`}
+                        <FileText
+                          className={`w-3.5 h-3.5 ${
+                            xrayFile ? "text-blue-400" : "text-slate-500"
+                          }`}
                         />
                         <span className="truncate w-full text-center font-bold uppercase">
                           {xrayFile ? "READY" : "X-RAY"}
@@ -1709,10 +419,16 @@ export default function App() {
                     <div className="flex flex-col gap-1 w-full">
                       <button
                         onClick={() => audioInputRef.current?.click()}
-                        className={`flex flex-col items-center justify-center gap-1.5 bg-[#1a212d] border rounded-lg p-2.5 text-[10px] transition-all ${audioFile ? "border-emerald-500 bg-emerald-500/5" : "border-[#2a3441] hover:border-emerald-500/50"}`}
+                        className={`flex flex-col items-center justify-center gap-1.5 bg-[#1a212d] border rounded-lg p-2.5 text-[10px] transition-all ${
+                          audioFile
+                            ? "border-emerald-500 bg-emerald-500/5"
+                            : "border-[#2a3441] hover:border-emerald-500/50"
+                        }`}
                       >
-                        <Volume2
-                          className={`w-3.5 h-3.5 ${audioFile ? "text-emerald-400" : "text-slate-500"}`}
+                        <Activity
+                          className={`w-3.5 h-3.5 ${
+                            audioFile ? "text-emerald-400" : "text-slate-500"
+                          }`}
                         />
                         <span className="truncate w-full text-center font-bold uppercase">
                           {audioFile ? "READY" : "AUDIO"}
@@ -1739,6 +455,8 @@ export default function App() {
                   />
                 </div>
               )}
+
+              {/* Clinical History */}
               <div className="space-y-1.5">
                 <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest flex justify-between">
                   Clinical Context
@@ -1757,6 +475,8 @@ export default function App() {
 - Recent vitals or physical findings`}
                 />
               </div>
+
+              {/* Action Buttons */}
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={analyzeCase}
@@ -1779,6 +499,8 @@ export default function App() {
                 </button>
               </div>
             </section>
+
+            {/* Error Display */}
             {error && (
               <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex gap-2 items-start animate-in fade-in slide-in-from-top-1">
                 <AlertOctagon className="w-4 h-4 text-red-500 shrink-0" />
@@ -1796,7 +518,9 @@ export default function App() {
         </div>
       </aside>
 
+      {/* Main Content Area */}
       <main className="flex-1 flex flex-col relative overflow-hidden transition-all duration-300 bg-[#0d1117]">
+        {/* Header */}
         <header className="h-14 bg-[#151b26]/80 backdrop-blur-xl border-b border-[#2a3441] px-6 flex items-center justify-between shrink-0 z-10">
           <div className="flex items-center gap-4">
             <button
@@ -1827,8 +551,10 @@ export default function App() {
           </div>
         </header>
 
+        {/* Content Area */}
         <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
           <div className="w-full mx-auto space-y-6">
+            {/* Initial State */}
             {!analysisResult && !loading && (
               <div className="h-[70vh] flex flex-col items-center justify-center text-center space-y-8 animate-in fade-in duration-700">
                 <div className="relative">
@@ -1849,9 +575,9 @@ export default function App() {
               </div>
             )}
 
+            {/* Loading State */}
             {loading && (
               <div className="h-[70vh] flex flex-col items-center justify-center space-y-8 animate-in fade-in duration-500">
-                {/* High-End Spinner */}
                 <div className="relative w-24 h-24">
                   <div className="absolute inset-0 border-4 border-blue-500/5 rounded-full" />
                   <div className="absolute inset-0 border-4 border-t-blue-500 rounded-full animate-spin shadow-[0_0_25px_rgba(59,130,246,0.3)]" />
@@ -1860,10 +586,11 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* NEW: Thinking Console - Shows the actual agentic steps */}
-                <ThinkingConsole steps={thinkingSteps} />
+                <ThinkingConsole
+                  steps={thinkingSteps}
+                  streamingThought={streamingThought}
+                />
 
-                {/* Status Footer */}
                 <div className="text-center space-y-2">
                   <p className="text-[10px] font-black text-blue-500 tracking-[0.3em] uppercase">
                     {thinkingSteps.length > 0
@@ -1878,8 +605,10 @@ export default function App() {
               </div>
             )}
 
+            {/* Results State */}
             {analysisResult && (
               <>
+                {/* Tab Navigation */}
                 <div className="flex gap-1 p-1 bg-[#151b26] rounded-xl border border-[#2a3441] w-fit shadow-lg">
                   {[
                     { id: "overview", label: "Verdict", icon: ShieldAlert },
@@ -1889,7 +618,11 @@ export default function App() {
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`px-5 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all ${activeTab === tab.id ? "bg-blue-600 text-white shadow-md shadow-blue-900/20" : "text-slate-500 hover:text-slate-300 hover:bg-white/5"}`}
+                      className={`px-5 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all ${
+                        activeTab === tab.id
+                          ? "bg-blue-600 text-white shadow-md shadow-blue-900/20"
+                          : "text-slate-500 hover:text-slate-300 hover:bg-white/5"
+                      }`}
                     >
                       <tab.icon className="w-3.5 h-3.5" />
                       {tab.label}
@@ -1897,9 +630,9 @@ export default function App() {
                   ))}
                 </div>
 
+                {/* Tab Content */}
                 {activeTab === "overview" && (
                   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {/* 🛡️ GUARD: Only show results if we have the discrepancy data */}
                     {analysisResult?.discrepancy_alert ? (
                       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
                         <VerdictCard
@@ -1910,14 +643,9 @@ export default function App() {
                           analysisResult={analysisResult}
                           setShowFullDirectives={setShowFullDirectives}
                         />
-                        <SeverityCard
-                          analysisResult={analysisResult}
-                          getSeverity={getSeverity}
-                          SEVERITY_MAP={SEVERITY_MAP}
-                        />
+                        <SeverityCard analysisResult={analysisResult} />
                       </div>
                     ) : (
-                      /* Placeholder while thinking */
                       <div className="p-12 border-2 border-dashed border-[#2a3441] rounded-3xl flex flex-col items-center justify-center text-slate-600">
                         <Activity className="w-8 h-8 mb-4 opacity-20 animate-pulse" />
                         <p className="text-xs font-bold uppercase tracking-widest">
@@ -1926,11 +654,23 @@ export default function App() {
                       </div>
                     )}
 
-                    {analysisResult && <ConfidenceHeatmap />}
+                    {/* Confidence Heatmap placeholder */}
+                    {analysisResult && (
+                      <div className="bg-[#151b26] border border-[#2a3441] rounded-xl p-5">
+                        <div className="flex items-center gap-2 mb-4">
+                          <Layers className="w-3 h-3 text-slate-400" />
+                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            Consensus Confidence Matrix
+                          </h4>
+                        </div>
+                        <p className="text-xs text-slate-500 italic">
+                          Matrix visualization component would go here
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {/* ==================== EVIDENCE TAB ==================== */}
                 {activeTab === "evidence" && (
                   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1939,46 +679,54 @@ export default function App() {
                         analysisResult={analysisResult}
                         setShowImagingModal={setShowImagingModal}
                       />
-
                       <AcousticCard
                         audioFile={audioFile}
                         isAudioPlaying={isAudioPlaying}
                         setIsAudioPlaying={setIsAudioPlaying}
                         analysisResult={analysisResult}
+                        setShowAcousticModal={setShowAcousticModal}
                       />
-
-                      <HistoryCard analysisResult={analysisResult} />
+                      <LeadClinicianCard
+                        analysisResult={analysisResult}
+                        setShowClinicianModal={setShowClinicianModal}
+                      />
                     </div>
+                    <AgentMetricsPanel analysisResult={analysisResult} />
                   </div>
                 )}
-                {/* ==================== END OF EVIDENCE TAB ==================== */}
+
                 {activeTab === "audit" && (
                   <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-top-4 duration-500">
-                    {/* Logic Node Trace */}
-                    <div className="grid grid-cols-1 gap-4">
-                      {analysisResult.reasoning_trace?.map((step, i) => (
-                        <LogicNode
-                          key={i}
-                          step={step}
-                          index={i}
-                          isLast={
-                            i ===
-                            (analysisResult.reasoning_trace?.length || 0) - 1
-                          }
-                        />
-                      ))}
-                    </div>
+                    {analysisResult.reasoning_trace?.map((step, i) => (
+                      <div
+                        key={i}
+                        className="bg-[#151b26] border border-[#2a3441] rounded-xl p-6"
+                      >
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-xs font-black text-blue-500">
+                            {i + 1}
+                          </div>
+                          <h4 className="text-xs font-bold text-white">
+                            Logic Node
+                          </h4>
+                        </div>
+                        <div className="text-xs text-slate-300 leading-relaxed prose prose-invert prose-sm max-w-none">
+                          <ReactMarkdown>{step}</ReactMarkdown>
+                        </div>
+                      </div>
+                    ))}
 
-                    {/* Integrated Audit Markdown */}
                     {analysisResult.audit_markdown && (
-                      <AuditLogBlock content={analysisResult.audit_markdown} />
-                    )}
-
-                    {/* Internal Thought Process */}
-                    {analysisResult.thought_process && (
-                      <ThoughtProcessBlock
-                        content={analysisResult.thought_process}
-                      />
+                      <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-6">
+                        <h4 className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-4">
+                          Clinical Audit Log
+                        </h4>
+                        <div className="text-sm text-slate-300 prose prose-invert prose-sm max-w-none">
+                          <ReactMarkdown>
+                            {analysisResult.audit_markdown}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
@@ -1987,6 +735,7 @@ export default function App() {
           </div>
         </div>
 
+        {/* Footer */}
         <footer className="h-10 px-6 border-t border-[#2a3441] flex items-center justify-between text-[9px] font-black text-slate-500 uppercase tracking-[0.3em] bg-[#151b26]/50 shrink-0">
           <div className="flex items-center gap-4">
             <span>MedGemma v0.5.2</span>
@@ -2000,17 +749,775 @@ export default function App() {
         </footer>
       </main>
 
+      {/* Imaging Modal */}
+      {/* Imaging Modal */}
+      {showImagingModal && (
+        <div
+          className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in duration-300"
+          onClick={() => setShowImagingModal(false)}
+        >
+          <div
+            className="bg-[#151b26] border border-[#2a3441] rounded-2xl w-full max-w-6xl max-h-[85vh] overflow-hidden shadow-2xl animate-in slide-in-from-bottom-4 duration-500"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Compact Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a3441] bg-gradient-to-r from-blue-500/5 to-purple-500/5">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+                  <Microscope className="w-4 h-4 text-blue-400" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-white">
+                    Radiographic Analysis
+                  </h2>
+                  <p className="text-[10px] text-slate-400">
+                    Multi-phase evaluation
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowImagingModal(false)}
+                className="p-2 hover:bg-white/5 rounded-lg transition-colors group"
+              >
+                <X className="w-4 h-4 text-slate-400 group-hover:text-white" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="overflow-y-auto max-h-[calc(85vh-80px)]">
+              {analysisResult &&
+                (() => {
+                  const visionAgent = analysisResult.agent_reports.find(
+                    (r) =>
+                      r.agent_name === "imaging" || r.agent === "VisionAgent",
+                  );
+
+                  return (
+                    <div className="grid grid-cols-2 gap-6 p-6">
+                      {/* Left Column: Image + Metadata */}
+                      <div className="space-y-4">
+                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                          Radiographic Image
+                        </h3>
+
+                        {/* Image */}
+                        <div className="aspect-square bg-[#0a0e14] rounded-xl border border-[#2a3441] overflow-hidden">
+                          {xrayFile ? (
+                            <img
+                              src={URL.createObjectURL(xrayFile)}
+                              alt="Chest X-ray"
+                              className="w-full h-full object-contain"
+                            />
+                          ) : (
+                            <img
+                              src={`${API_URL}/xray/${analysisResult.case_id}`}
+                              alt="Chest X-ray"
+                              className="w-full h-full object-contain"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = "none";
+                              }}
+                            />
+                          )}
+                        </div>
+
+                        {/* Metadata */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-2.5">
+                            <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-0.5">
+                              Model
+                            </p>
+                            <p className="text-xs font-bold text-white truncate">
+                              {visionAgent?.model || "MedGemma-1.5-4b"}
+                            </p>
+                          </div>
+                          <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-2.5">
+                            <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-0.5">
+                              Time
+                            </p>
+                            <p className="text-xs font-bold text-white">
+                              {visionAgent?.execution_time || "N/A"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right Column: Clinical Assessment */}
+                      <div className="space-y-4">
+                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                          Clinical Assessment
+                        </h3>
+
+                        <div className="bg-[#0a0e14] border border-[#2a3441] rounded-xl p-5 h-[calc(100%-32px)] overflow-y-auto scrollbar-thin">
+                          {visionAgent?.observation ? (
+                            <div className="prose prose-invert prose-sm max-w-none">
+                              <ReactMarkdown
+                                components={{
+                                  p: ({ children }) => (
+                                    <p className="text-sm text-slate-300 leading-relaxed mb-3 last:mb-0">
+                                      {children}
+                                    </p>
+                                  ),
+                                  strong: ({ children }) => (
+                                    <strong className="text-white font-semibold">
+                                      {children}
+                                    </strong>
+                                  ),
+                                  ul: ({ children }) => (
+                                    <ul className="space-y-2 my-3">
+                                      {children}
+                                    </ul>
+                                  ),
+                                  li: ({ children }) => (
+                                    <li className="text-sm text-slate-300 leading-relaxed flex gap-2">
+                                      <span className="text-blue-400 mt-0.5 shrink-0">
+                                        •
+                                      </span>
+                                      <span className="flex-1">{children}</span>
+                                    </li>
+                                  ),
+                                  h3: ({ children }) => (
+                                    <h3 className="text-sm font-bold text-white mt-4 mb-2 first:mt-0">
+                                      {children}
+                                    </h3>
+                                  ),
+                                  h4: ({ children }) => (
+                                    <h4 className="text-xs font-bold text-blue-400 mt-3 mb-1.5">
+                                      {children}
+                                    </h4>
+                                  ),
+                                }}
+                              >
+                                {visionAgent.observation}
+                              </ReactMarkdown>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-slate-500 italic">
+                              No detailed observation available
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+              {/* Key Findings Section (Below, Full Width) */}
+              {/* Key Findings Section (Below, Full Width) */}
+              {analysisResult &&
+                (() => {
+                  const visionAgent = analysisResult.agent_reports.find(
+                    (r) =>
+                      r.agent_name === "imaging" || r.agent === "VisionAgent",
+                  );
+
+                  return visionAgent?.claims &&
+                    visionAgent.claims.length > 0 ? (
+                    <div className="border-t border-[#2a3441] px-6 py-4 bg-[#0a0e14]/50">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-widest">
+                          Key Findings
+                        </h3>
+                        <span className="text-[10px] font-bold text-slate-500">
+                          {visionAgent.claims.length} Total
+                        </span>
+                      </div>
+                      <div
+                        className="grid gap-3"
+                        style={{
+                          gridTemplateColumns:
+                            "repeat(auto-fit, minmax(300px, 1fr))",
+                        }}
+                      >
+                        {visionAgent.claims.map((claim: any, idx: number) => (
+                          <div
+                            key={idx}
+                            className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-3 hover:bg-blue-500/10 transition-colors"
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-1.5">
+                                <div className="w-5 h-5 rounded bg-blue-500/20 flex items-center justify-center">
+                                  <span className="text-[10px] font-black text-blue-400">
+                                    {idx + 1}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">
+                                  Finding {idx + 1}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <div className="h-1 w-12 bg-slate-800 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-blue-500 rounded-full"
+                                    style={{
+                                      width: `${(claim.confidence || 0) * 100}%`,
+                                    }}
+                                  />
+                                </div>
+                                <span className="text-[10px] font-bold text-blue-400">
+                                  {Math.round((claim.confidence || 0) * 100)}%
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Render with ReactMarkdown for proper formatting */}
+                            <div className="prose prose-invert prose-sm max-w-none">
+                              <ReactMarkdown
+                                components={{
+                                  p: ({ children }) => (
+                                    <p className="text-sm text-slate-300 leading-relaxed mb-2 last:mb-0">
+                                      {children}
+                                    </p>
+                                  ),
+                                  strong: ({ children }) => (
+                                    <strong className="text-white font-semibold">
+                                      {children}
+                                    </strong>
+                                  ),
+                                  ul: ({ children }) => (
+                                    <ul className="space-y-1 my-2">
+                                      {children}
+                                    </ul>
+                                  ),
+                                  li: ({ children }) => (
+                                    <li className="text-sm text-slate-300 leading-relaxed flex gap-2 items-start">
+                                      <span className="text-blue-400 mt-0.5 shrink-0">
+                                        •
+                                      </span>
+                                      <span className="flex-1">{children}</span>
+                                    </li>
+                                  ),
+                                  h3: ({ children }) => (
+                                    <h3 className="text-sm font-bold text-white mt-3 mb-1.5 first:mt-0">
+                                      {children}
+                                    </h3>
+                                  ),
+                                  h4: ({ children }) => (
+                                    <h4 className="text-xs font-bold text-blue-400 mt-2 mb-1">
+                                      {children}
+                                    </h4>
+                                  ),
+                                }}
+                              >
+                                {claim.value}
+                              </ReactMarkdown>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Acoustic Modal */}
+      {showAcousticModal && (
+        <div
+          className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in duration-300"
+          onClick={() => setShowAcousticModal(false)}
+        >
+          <div
+            className="bg-[#151b26] border border-[#2a3441] rounded-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl animate-in slide-in-from-bottom-4 duration-500"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a3441] bg-gradient-to-r from-emerald-500/5 to-cyan-500/5">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+                  <Volume2 className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-white">
+                    Acoustic Analysis
+                  </h2>
+                  <p className="text-[10px] text-slate-400">
+                    Auscultation findings
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAcousticModal(false)}
+                className="p-2 hover:bg-white/5 rounded-lg transition-colors group"
+              >
+                <X className="w-4 h-4 text-slate-400 group-hover:text-white" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto max-h-[calc(85vh-80px)] p-6 space-y-6">
+              {analysisResult &&
+                (() => {
+                  const acousticAgent = analysisResult.agent_reports.find(
+                    (r) =>
+                      r.agent_name === "acoustics" || r.agent === "AudioAgent",
+                  );
+
+                  return (
+                    <>
+                      {/* Observation */}
+                      {acousticAgent?.observation && (
+                        <div>
+                          <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest mb-3">
+                            Clinical Observation
+                          </h3>
+                          <div className="bg-[#0a0e14] border border-[#2a3441] rounded-xl p-5 prose prose-invert prose-sm max-w-none">
+                            <p className="text-sm text-slate-300 leading-relaxed">
+                              {acousticAgent.observation}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* All Claims */}
+                      {acousticAgent?.claims &&
+                        acousticAgent.claims.length > 0 && (
+                          <div>
+                            <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest mb-3">
+                              All Findings ({acousticAgent.claims.length})
+                            </h3>
+                            <div className="space-y-3">
+                              {acousticAgent.claims.map(
+                                (claim: any, idx: number) => (
+                                  <div
+                                    key={idx}
+                                    className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4"
+                                  >
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className="text-xs font-bold text-emerald-400">
+                                        {claim.label}
+                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        <div className="h-1.5 w-20 bg-slate-800 rounded-full overflow-hidden">
+                                          <div
+                                            className="h-full bg-emerald-500 rounded-full"
+                                            style={{
+                                              width: `${(claim.confidence || 0) * 100}%`,
+                                            }}
+                                          />
+                                        </div>
+                                        <span className="text-xs font-bold text-emerald-400">
+                                          {Math.round(
+                                            (claim.confidence || 0) * 100,
+                                          )}
+                                          %
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <p className="text-sm text-slate-300 leading-relaxed">
+                                      {claim.value}
+                                    </p>
+                                  </div>
+                                ),
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                      {/* Metadata */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3">
+                          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-0.5">
+                            Model
+                          </p>
+                          <p className="text-xs font-bold text-white">
+                            {acousticAgent?.model || "Google-HeAR"}
+                          </p>
+                        </div>
+                        <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3">
+                          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-0.5">
+                            Time
+                          </p>
+                          <p className="text-xs font-bold text-white">
+                            {acousticAgent?.execution_time || "N/A"}
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lead Clinician Modal */}
+      {showClinicianModal && (
+        <div
+          className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in duration-300"
+          onClick={() => setShowClinicianModal(false)}
+        >
+          <div
+            className="bg-[#151b26] border border-[#2a3441] rounded-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl animate-in slide-in-from-bottom-4 duration-500"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a3441] bg-gradient-to-r from-purple-500/5 to-pink-500/5">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-purple-500/10 flex items-center justify-center border border-purple-500/20">
+                  <Brain className="w-4 h-4 text-purple-400" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-white">
+                    Lead Clinician Analysis
+                  </h2>
+                  <p className="text-[10px] text-slate-400">
+                    Clinical synthesis
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowClinicianModal(false)}
+                className="p-2 hover:bg-white/5 rounded-lg transition-colors group"
+              >
+                <X className="w-4 h-4 text-slate-400 group-hover:text-white" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto max-h-[calc(85vh-80px)] p-6 space-y-6">
+              {analysisResult &&
+                (() => {
+                  const clinicianAgent = analysisResult.agent_reports.find(
+                    (r) =>
+                      r.agent_name === "clinician" ||
+                      r.agent === "LeadClinician",
+                  );
+
+                  return (
+                    <>
+                      {/* Observation */}
+                      {clinicianAgent?.observation && (
+                        <div>
+                          <h3 className="text-xs font-black text-purple-400 uppercase tracking-widest mb-3">
+                            Clinical Synthesis
+                          </h3>
+                          <div className="bg-[#0a0e14] border border-[#2a3441] rounded-xl p-5 prose prose-invert prose-sm max-w-none">
+                            <ReactMarkdown
+                              components={{
+                                p: ({ children }) => (
+                                  <p className="text-sm text-slate-300 leading-relaxed mb-3 last:mb-0">
+                                    {children}
+                                  </p>
+                                ),
+                                strong: ({ children }) => (
+                                  <strong className="text-white font-semibold">
+                                    {children}
+                                  </strong>
+                                ),
+                              }}
+                            >
+                              {clinicianAgent.observation}
+                            </ReactMarkdown>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Metadata */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-3">
+                          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-0.5">
+                            Model
+                          </p>
+                          <p className="text-xs font-bold text-white">
+                            {clinicianAgent?.model || "MedGemma-1.5-4b"}
+                          </p>
+                        </div>
+                        <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-3">
+                          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-0.5">
+                            Time
+                          </p>
+                          <p className="text-xs font-bold text-white">
+                            {clinicianAgent?.execution_time || "N/A"}
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Verdict Modal */}
+      {showFullVerdict && (
+        <div
+          className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in duration-300"
+          onClick={() => setShowFullVerdict(false)}
+        >
+          <div
+            className="bg-[#151b26] border border-[#2a3441] rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl animate-in slide-in-from-bottom-4 duration-500"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-[#2a3441] bg-gradient-to-r from-blue-500/5 to-purple-500/5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+                  <ShieldAlert className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white">
+                    Complete Adjudicated Verdict
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Multi-agent clinical consensus
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowFullVerdict(false)}
+                className="p-2 hover:bg-white/5 rounded-lg transition-colors group"
+              >
+                <X className="w-5 h-5 text-slate-400 group-hover:text-white" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="overflow-y-auto max-h-[calc(90vh-80px)] p-6 space-y-6">
+              {/* Confidence Meter */}
+              <div className="bg-gradient-to-r from-blue-500/5 to-purple-500/5 border border-blue-500/20 rounded-xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold text-white">
+                    Consensus Confidence
+                  </h3>
+                  <span className="text-2xl font-black text-blue-400">
+                    {Math.round(
+                      (analysisResult?.discrepancy_alert?.score || 0) * 100,
+                    )}
+                    %
+                  </span>
+                </div>
+                <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-1000"
+                    style={{
+                      width: `${(analysisResult?.discrepancy_alert?.score || 0) * 100}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Summary */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-bold text-white uppercase tracking-widest">
+                  Clinical Summary
+                </h3>
+                <div className="prose prose-invert prose-sm max-w-none">
+                  <ReactMarkdown
+                    components={{
+                      p: ({ children }) => (
+                        <p className="text-base text-slate-300 leading-relaxed mb-4">
+                          {children}
+                        </p>
+                      ),
+                      strong: ({ children }) => (
+                        <strong className="text-white font-bold">
+                          {children}
+                        </strong>
+                      ),
+                      ul: ({ children }) => (
+                        <ul className="list-disc list-inside space-y-2 ml-4">
+                          {children}
+                        </ul>
+                      ),
+                      li: ({ children }) => (
+                        <li className="text-base text-slate-300">{children}</li>
+                      ),
+                    }}
+                  >
+                    {analysisResult?.discrepancy_alert?.summary ||
+                      "Analysis in progress..."}
+                  </ReactMarkdown>
+                </div>
+              </div>
+
+              {/* Full Reasoning */}
+              {analysisResult?.thought_process && (
+                <div className="space-y-4">
+                  <h3 className="text-sm font-bold text-white uppercase tracking-widest">
+                    Detailed Clinical Reasoning
+                  </h3>
+                  <div className="bg-[#0a0e14] border border-[#2a3441] rounded-xl p-6 prose prose-invert prose-sm max-w-none">
+                    <ReactMarkdown
+                      components={{
+                        p: ({ children }) => (
+                          <p className="text-sm text-slate-300 leading-relaxed mb-3">
+                            {children}
+                          </p>
+                        ),
+                        strong: ({ children }) => (
+                          <strong className="text-white font-bold">
+                            {children}
+                          </strong>
+                        ),
+                      }}
+                    >
+                      {analysisResult.thought_process}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              )}
+
+              {/* Contributing Agents */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-white uppercase tracking-widest">
+                  Contributing Agents
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {analysisResult?.agent_reports?.map(
+                    (agent: any, i: number) => (
+                      <div
+                        key={i}
+                        className="bg-[#0a0e14] border border-[#2a3441] rounded-lg p-4 hover:border-blue-500/30 transition-colors"
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xl">{agent.icon}</span>
+                          <span className="text-xs font-bold text-white capitalize">
+                            {agent.agent_name || agent.agent}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-slate-500 uppercase tracking-widest">
+                            Status
+                          </span>
+                          <span
+                            className={`text-[9px] font-bold uppercase ${agent.success ? "text-emerald-400" : "text-slate-500"}`}
+                          >
+                            {agent.success ? "Complete" : "Pending"}
+                          </span>
+                        </div>
+                      </div>
+                    ),
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Directives Modal */}
+      {showFullDirectives && (
+        <div
+          className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in duration-300"
+          onClick={() => setShowFullDirectives(false)}
+        >
+          <div
+            className="bg-[#151b26] border border-[#2a3441] rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl animate-in slide-in-from-bottom-4 duration-500"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-[#2a3441] bg-gradient-to-r from-emerald-500/5 to-cyan-500/5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+                  <ClipboardList className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white">
+                    Clinical Directives & Protocols
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Recommended diagnostic pathways
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowFullDirectives(false)}
+                className="p-2 hover:bg-white/5 rounded-lg transition-colors group"
+              >
+                <X className="w-5 h-5 text-slate-400 group-hover:text-white" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="overflow-y-auto max-h-[calc(90vh-80px)] p-6 space-y-4">
+              {(analysisResult?.recommended_data_actions &&
+              analysisResult.recommended_data_actions.length > 0
+                ? analysisResult.recommended_data_actions
+                : [
+                    "Pneumonia",
+                    "Atelectasis",
+                    "Lung Mass (non-cancerous)",
+                    "Tuberculosis",
+                  ]
+              ).map((directive: string, idx: number) => (
+                <div
+                  key={idx}
+                  className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-5 hover:bg-emerald-500/10 transition-colors group"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 shrink-0 group-hover:scale-110 transition-transform">
+                      <span className="text-sm font-black text-emerald-400">
+                        {idx + 1}
+                      </span>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-base font-bold text-white mb-2">
+                        {directive}
+                      </h3>
+                      <p className="text-sm text-slate-400 leading-relaxed">
+                        Clinical consideration based on multi-agent consensus
+                        analysis
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Summary Footer */}
+              <div className="mt-6 pt-6 border-t border-[#2a3441]">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-500">
+                    Total critical actions identified
+                  </span>
+                  <span className="text-xl font-black text-emerald-400">
+                    {analysisResult?.recommended_data_actions?.length || 4}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Global Styles */}
+      {/* Global Styles */}
       <style
         dangerouslySetInnerHTML={{
           __html: `
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-        body { font-family: 'Plus Jakarta Sans', sans-serif; font-feature-settings: "cv02", "cv03", "cv04"; -webkit-font-smoothing: antialiased; }
-        ::-webkit-scrollbar { width: 5px; height: 5px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #2a3441; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: #3b4757; }
-        .scrollbar-thin::-webkit-scrollbar { width: 2px; }
-      `,
+      @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+      
+      /* Global Typography System */
+      body { 
+        font-family: 'Plus Jakarta Sans', sans-serif; 
+        font-feature-settings: "cv02", "cv03", "cv04"; 
+        -webkit-font-smoothing: antialiased; 
+      }
+      
+      /* Consistent Font Sizes */
+      .text-xs { font-size: 0.75rem !important; line-height: 1.5 !important; }
+      .text-sm { font-size: 0.875rem !important; line-height: 1.5 !important; }
+      .text-base { font-size: 1rem !important; line-height: 1.5 !important; }
+      
+      /* Consistent Font Weights */
+      .font-normal { font-weight: 400 !important; }
+      .font-medium { font-weight: 500 !important; }
+      .font-semibold { font-weight: 600 !important; }
+      .font-bold { font-weight: 700 !important; }
+      .font-black { font-weight: 800 !important; }
+      
+      /* Scrollbar Styling */
+      ::-webkit-scrollbar { width: 5px; height: 5px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #2a3441; border-radius: 10px; }
+      ::-webkit-scrollbar-thumb:hover { background: #3b4757; }
+      .scrollbar-thin::-webkit-scrollbar { width: 2px; }
+      
+      /* Prose (ReactMarkdown) Consistency */
+      .prose p { font-size: 0.875rem !important; line-height: 1.5 !important; }
+      .prose strong { font-weight: 600 !important; }
+      .prose li { font-size: 0.875rem !important; line-height: 1.5 !important; }
+      .prose h3 { font-size: 0.875rem !important; font-weight: 700 !important; }
+      .prose h4 { font-size: 0.875rem !important; font-weight: 600 !important; }
+    `,
         }}
       />
     </div>

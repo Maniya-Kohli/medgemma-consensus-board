@@ -12,6 +12,9 @@ from typing import Dict, Any, Optional
 import httpx
 import asyncio
 from fastapi.responses import StreamingResponse
+import sys
+
+
 
 
 from consensus_board.schemas.contracts import (
@@ -385,16 +388,187 @@ async def call_cloud_consensus(case_id: str, imaging_txt: str, audio_txt: str, h
 # 4) MAIN FLOW
 # -----------------------------
 
+# In backend_brains_Phase_2.ipynb - Update the stream_protocol function:
+
+# @app.post("/run")
+# async def run_case(case: CaseInput):
+#     async def stream_protocol():
+#         target_dir = f"artifacts/runs/{case.case_id}"
+#         image_path = os.path.join(target_dir, "xray.jpg")
+#         audio_path = os.path.join(target_dir, "audio.wav")
+
+#         # Convert image to base64
+#         image_base64 = None
+#         if os.path.exists(image_path):
+#             import base64
+#             with open(image_path, "rb") as img_file:
+#                 image_base64 = base64.b64encode(img_file.read()).decode('utf-8')
+
+#         # Read audio if exists
+#         audio_bytes = None
+#         if os.path.exists(audio_path):
+#             with open(audio_path, "rb") as aud_file:
+#                 audio_bytes = aud_file.read()
+
+#         payload = {
+#             "history": json.dumps([{"role": "user", "content": case.clinical_note_text}]),
+#             "image_base64": image_base64,  # Send as string
+#             "has_audio": audio_bytes is not None
+#         }
+
+#         try:
+#             async with httpx.AsyncClient(timeout=None) as client:
+#                 # Send as JSON, not multipart
+#                 async with client.stream(
+#                     "POST", 
+#                     f"{API_URL}/consensus", 
+#                     json=payload,  # Changed from data= and files=
+#                 ) as response:
+#                     async for line in response.aiter_lines():
+#                         if line.startswith("data: "):
+#                             yield f"{line}\n\n"
+#                         elif line.strip():
+#                             yield f"data: {json.dumps({'type': 'thought', 'delta': line})}\n\n"
+
+#         except Exception as e:
+#             yield f"data: {json.dumps({'type': 'error', 'message': f'Gateway Error: {str(e)}'})}\n\n"
+
+#     return StreamingResponse(stream_protocol(), media_type="text-event-stream")
+
+# @app.post("/run")
+# async def run_case(case: CaseInput):
+#     async def stream_protocol():
+#         target_dir = f"artifacts/runs/{case.case_id}"
+#         image_path = os.path.join(target_dir, "xray.jpg")
+#         audio_path = os.path.join(target_dir, "audio.wav")
+
+#         opened_files = []
+#         try:
+#             # 1. Initialize the payloads BEFORE the stream call 
+#             files_payload = {}
+#             if os.path.exists(image_path):
+#                 f_img = open(image_path, "rb")
+#                 opened_files.append(f_img)
+#                 files_payload["image"] = ("vision.jpg", f_img, "image/jpeg")
+            
+#             if os.path.exists(audio_path):
+#                 f_aud = open(audio_path, "rb")
+#                 opened_files.append(f_aud)
+#                 files_payload["audio"] = ("audio.wav", f_aud, "audio/wav")
+
+#             # Define 'payload' here so it is available for the next line
+#             payload = {
+#                 "history": json.dumps([{"role": "user", "content": case.clinical_note_text}])
+#             }
+
+#             # 2. Start the stream to Google Colab
+#             async with httpx.AsyncClient(timeout=None) as client:
+#                 async with client.stream(
+#                     "POST", 
+#                     f"{API_URL}/consensus", 
+#                     data=payload,  # 'payload' is now defined!
+#                     files=files_payload
+#                 ) as response:
+                    
+#                     async for line in response.aiter_lines():
+#                         if not line.strip() or not line.startswith("data: "):
+#                             continue
+                        
+#                         try:
+#                             # Parse the JSON from the Colab Blackboard 
+#                             colab_data = json.loads(line[6:])
+#                             msg = colab_data.get("message", "")
+
+#                             # Handle word-by-word streaming ("ChatGPT style")
+#                             if colab_data.get("type") == "thought":
+#                                 token = colab_data.get("delta", "")
+#                                 yield f"data: {json.dumps({'type': 'thought', 'delta': token})}\n\n"
+                            
+#                             elif ">>" in msg:
+#                                 token = msg.split(">>")[-1]
+#                                 yield f"data: {json.dumps({'type': 'thought', 'delta': token})}\n\n"
+
+#                             # Handle status updates
+#                             elif "STATUS:" in msg or colab_data.get("type") == "status":
+#                                 clean_status = msg.replace("STATUS:", "").strip()
+#                                 yield f"data: {json.dumps({'type': 'status', 'message': clean_status})}\n\n"
+
+#                             # Handle the final clinical diagnosis
+#                             elif colab_data.get("type") == "final":
+#                                 yield f"{line}\n\n"
+
+#                         except Exception:
+#                             continue
+
+#         except Exception as e:
+#             print(f"💥 Gateway Error: {str(e)}")
+#             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+#         finally:
+#             # Clean up local file pointers
+#             for f in opened_files:
+#                 f.close()
+
+#     return StreamingResponse(stream_protocol(), media_type="text-event-stream")
+
+# ============================================================================
+# UPDATED VS CODE GATEWAY ENDPOINT
+# Handles new moderator-driven blackboard data structures
+# ============================================================================
+
 @app.post("/run")
 async def run_case(case: CaseInput):
+    """
+    Main endpoint that streams blackboard orchestration to UI
+    """
+    
+    # Helper functions defined at module level (outside the async generator)
+    def format_agent_reports(agent_reports: list) -> list:
+        """Format agent reports for better UI display"""
+        formatted = []
+        
+        for report in agent_reports:
+            agent_name = report.get("agent", "Unknown")
+            status = report.get("status", "unknown")
+            observation = report.get("observation", "")
+            claims = report.get("claims", [])
+            execution_time = report.get("execution_time", 0)
+            error = report.get("error")
+            
+            formatted_report = {
+                "agent": agent_name,
+                "status": status,
+                "observation": observation,
+                "execution_time": f"{execution_time:.2f}s",
+                "claims_count": len(claims),
+                "claims": claims,
+                "icon": get_agent_icon(agent_name),
+                "success": status == "completed"
+            }
+            
+            if error:
+                formatted_report["error"] = error
+            
+            formatted.append(formatted_report)
+        
+        return formatted
+    
+    def get_agent_icon(agent_name: str) -> str:
+        """Get emoji icon for agent"""
+        icons = {
+            "AudioAgent": "🎤",
+            "VisionAgent": "👁️",
+            "LeadClinician": "🧠"
+        }
+        return icons.get(agent_name, "🤖")
+    
     async def stream_protocol():
         target_dir = f"artifacts/runs/{case.case_id}"
         image_path = os.path.join(target_dir, "xray.jpg")
         audio_path = os.path.join(target_dir, "audio.wav")
 
-        # Create a list of files to open and eventually close
         opened_files = []
         try:
+            # 1. Initialize the payloads
             files_payload = {}
             if os.path.exists(image_path):
                 f_img = open(image_path, "rb")
@@ -410,25 +584,115 @@ async def run_case(case: CaseInput):
                 "history": json.dumps([{"role": "user", "content": case.clinical_note_text}])
             }
 
+            # 2. Stream from Google Colab Blackboard
             async with httpx.AsyncClient(timeout=None) as client:
-                # Use the 'files' parameter correctly for multipart upload
                 async with client.stream(
                     "POST", 
                     f"{API_URL}/consensus", 
-                    data=payload, 
+                    data=payload,
                     files=files_payload
                 ) as response:
+                    
                     async for line in response.aiter_lines():
-                        if line.startswith("data: "):
-                            yield f"{line}\n\n"
-                        elif line.strip():
-                            yield f"data: {json.dumps({'type': 'thought', 'delta': line})}\n\n"
+                        if not line.strip() or not line.startswith("data: "):
+                            continue
+                        
+                        try:
+                            # Parse the JSON from the Colab Blackboard
+                            colab_data = json.loads(line[6:])
+                            data_type = colab_data.get("type", "")
+                            
+                            # ============================================================
+                            # Handle moderator status updates
+                            # ============================================================
+                            if data_type == "status":
+                                msg = colab_data.get("message", "")
+                                board_snapshot = colab_data.get("board_snapshot", {})
+                                
+                                kb_size = board_snapshot.get("kb_size", 0)
+                                status = board_snapshot.get("status", "")
+                                focus_areas = board_snapshot.get("focus_areas", [])
+                                
+                                clean_msg = msg.replace("STATUS:", "").strip()
+                                
+                                yield f"data: {json.dumps({'type': 'status', 'message': clean_msg, 'metadata': {'findings_count': kb_size, 'state': status, 'focus_areas': focus_areas}})}\n\n"
+                            
+                            # ============================================================
+                            # Handle agent-specific updates
+                            # ============================================================
+                            elif "Iteration" in colab_data.get("message", ""):
+                                msg = colab_data.get("message", "")
+                                
+                                if "Dispatching" in msg:
+                                    agent_name = msg.split("Dispatching")[-1].strip().rstrip("...")
+                                    yield f"data: {json.dumps({'type': 'agent_start', 'agent': agent_name, 'message': f'🔄 {agent_name} analyzing...'})}\n\n"
+                                else:
+                                    yield f"data: {json.dumps({'type': 'status', 'message': msg})}\n\n"
+                            
+                            elif "completed" in colab_data.get("message", "").lower():
+                                msg = colab_data.get("message", "")
+                                agent_name = msg.split()[1] if len(msg.split()) > 1 else "Agent"
+                                yield f"data: {json.dumps({'type': 'agent_complete', 'agent': agent_name, 'message': f'✅ {agent_name} complete'})}\n\n"
+                            
+                            # ============================================================
+                            # Handle thought process streaming
+                            # ============================================================
+                            elif data_type == "thought":
+                                token = colab_data.get("delta", "")
+                                yield f"data: {json.dumps({'type': 'thought', 'delta': token})}\n\n"
+                            
+                            elif ">>" in colab_data.get("message", ""):
+                                token = colab_data.get("message", "").split(">>")[-1]
+                                yield f"data: {json.dumps({'type': 'thought', 'delta': token})}\n\n"
+                            
+                            # ============================================================
+                            # Enhanced final result handling
+                            # ============================================================
+                            elif data_type == "final":
+                                parsed = colab_data.get("parsed", {})
+                                audit_trail = colab_data.get("audit_trail", [])
+                                agent_reports = colab_data.get("agent_reports", [])
+                                raw_logic = colab_data.get("raw_logic", "")
+                                
+                                enhanced_final = {
+                                    "type": "final",
+                                    "parsed": {
+                                        "condition": parsed.get("condition", "Undetermined"),
+                                        "confidence": parsed.get("confidence", 0),
+                                        "diagnosis": parsed.get("diagnosis", ""),
+                                        "reasoning": parsed.get("reasoning", ""),
+                                        "differential_diagnosis": parsed.get("differential_diagnosis", []),
+                                        "consensus_summary": parsed.get("consensus_summary", "")
+                                    },
+                                    "audit_trail": audit_trail,
+                                    "agent_reports": format_agent_reports(agent_reports),
+                                    "raw_logic": raw_logic,
+                                    "metadata": {
+                                        "total_agents": len(agent_reports),
+                                        "successful_agents": len([r for r in agent_reports if r.get("status") == "completed"]),
+                                        "execution_times": {r.get("agent", ""): r.get("execution_time", 0) for r in agent_reports}
+                                    }
+                                }
+                                
+                                yield f"data: {json.dumps(enhanced_final)}\n\n"
+                            
+                            # ============================================================
+                            # Fallback: pass through other messages
+                            # ============================================================
+                            else:
+                                yield f"{line}\n\n"
+
+                        except json.JSONDecodeError:
+                            continue
+                        except Exception as e:
+                            print(f"⚠️ Error processing line: {e}")
+                            continue
 
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': f'Gateway Error: {str(e)}'})}\n\n"
+            print(f"💥 Gateway Error: {str(e)}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
         finally:
-            # CRITICAL: Close files after the stream finishes
             for f in opened_files:
                 f.close()
-
-    return StreamingResponse(stream_protocol(), media_type="text-event-stream")
+    
+    return StreamingResponse(stream_protocol(), media_type="text/event-stream")
