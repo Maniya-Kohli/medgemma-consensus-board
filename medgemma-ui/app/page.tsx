@@ -523,6 +523,7 @@ export default function App() {
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col relative overflow-hidden transition-all duration-300 bg-[#0d1117]">
         {/* Header */}
+
         <header className="h-14 bg-[#151b26]/80 backdrop-blur-xl border-b border-[#2a3441] px-6 flex items-center justify-between shrink-0 z-10">
           <div className="flex items-center gap-4">
             <button
@@ -535,18 +536,16 @@ export default function App() {
                 <Menu className="w-4 h-4" />
               )}
             </button>
-            <div className="flex flex-col">
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                Session{" "}
-                <span className="text-blue-500 font-mono tracking-wider">
-                  {mode === "library" ? selectedCase : sessionId}
-                </span>
-              </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm text-white">Session</h2>
+              <span className="text-sm text-blue-500 font-mono">
+                {mode === "library" ? selectedCase : sessionId}
+              </span>
             </div>
           </div>
           <div className="flex items-center gap-4">
             {analysisResult && (
-              <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-white/10 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+              <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-white/10 text-[9px] text-slate-400 uppercase tracking-wider">
                 <Activity className="w-3 h-3 text-blue-500" /> Live Consensus
               </div>
             )}
@@ -558,18 +557,18 @@ export default function App() {
           <div className="w-full mx-auto space-y-6">
             {/* Initial State */}
             {!analysisResult && !loading && (
-              <div className="h-[70vh] flex flex-col items-center justify-center text-center space-y-8 animate-in fade-in duration-700">
+              <div className="h-[70vh] flex flex-col items-center justify-center text-center space-y-6 animate-in fade-in duration-700">
                 <div className="relative">
                   <div className="absolute inset-0 bg-blue-500/10 blur-3xl rounded-full scale-150 animate-pulse" />
-                  <div className="w-20 h-20 bg-[#151b26] border border-[#2a3441] rounded-2xl flex items-center justify-center relative z-10 shadow-2xl">
-                    <Shield className="w-10 h-10 text-slate-700" />
+                  <div className="w-16 h-16 bg-[#151b26] border border-[#2a3441] rounded-lg flex items-center justify-center relative z-10">
+                    <Shield className="w-8 h-8 text-slate-700" />
                   </div>
                 </div>
-                <div className="space-y-3">
-                  <h3 className="text-xl font-bold text-white tracking-tight">
+                <div className="space-y-2">
+                  <h3 className="text-base text-white">
                     System Ready for Adjudication
                   </h3>
-                  <p className="text-slate-500 text-sm max-w-sm mx-auto leading-relaxed">
+                  <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
                     Upload clinical modalities or select a library case to
                     initiate the MedGemma consensus protocol.
                   </p>
@@ -579,8 +578,8 @@ export default function App() {
 
             {/* Loading State */}
             {loading && (
-              <div className="h-[70vh] flex flex-col items-center justify-center space-y-8 animate-in fade-in duration-500">
-                <div className="relative w-24 h-24">
+              <div className="h-[70vh] flex flex-col items-center justify-center space-y-6 animate-in fade-in duration-500">
+                <div className="relative w-20 h-20">
                   <div className="absolute inset-0 border-4 border-blue-500/5 rounded-full" />
                   <div className="absolute inset-0 border-4 border-t-blue-500 rounded-full animate-spin shadow-[0_0_25px_rgba(59,130,246,0.3)]" />
                   <div className="absolute inset-0 m-auto w-8 h-8 flex items-center justify-center">
@@ -594,7 +593,7 @@ export default function App() {
                 />
 
                 <div className="text-center space-y-2">
-                  <p className="text-[10px] font-black text-blue-500 tracking-[0.3em] uppercase">
+                  <p className="text-[9px] text-blue-500 tracking-wider uppercase">
                     {thinkingSteps.length > 0
                       ? thinkingSteps[thinkingSteps.length - 1].split("...")[0]
                       : "Initializing Adjudication"}
@@ -753,7 +752,8 @@ export default function App() {
         </div>
 
         {/* Footer */}
-        <footer className="h-10 px-6 border-t border-[#2a3441] flex items-center justify-between text-[9px] font-black text-slate-500 uppercase tracking-[0.3em] bg-[#151b26]/50 shrink-0">
+
+        <footer className="h-10 px-6 border-t border-[#2a3441] flex items-center justify-between text-[9px] text-slate-500 uppercase tracking-wider bg-[#151b26]/50 shrink-0">
           <div className="flex items-center gap-4">
             <span>MedGemma v0.5.2</span>
             <span className="w-1 h-1 rounded-full bg-slate-700" />
