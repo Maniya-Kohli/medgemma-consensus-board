@@ -98,7 +98,7 @@ export const ThinkingConsole: React.FC<ThinkingConsoleProps> = ({
         </div>
       )}
 
-      {/* Loading Indicator */}
+      {/* Loading Indicator **/}
       {steps.length === 0 && !streamingThought && (
         <div className="flex flex-col items-center justify-center py-8 opacity-40">
           <div className="relative w-6 h-6 mb-3">
