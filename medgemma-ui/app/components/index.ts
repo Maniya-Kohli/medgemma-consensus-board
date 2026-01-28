@@ -1,6 +1,7 @@
 // Component exports
 export { ThinkingConsole } from "./ThinkingConsole";
 export { AgentMetricsPanel } from "./AgentMetricsPanel";
+export { HypothesisEvaluationPanel } from "./HypothesisEvaluationPanel"; // ✅ ADD THIS
 export {
   RadiographicCard,
   AcousticCard,

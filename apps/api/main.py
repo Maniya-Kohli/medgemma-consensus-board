@@ -533,6 +533,7 @@ async def run_case(case: CaseInput):
             claims = report.get("claims", [])
             execution_time = report.get("execution_time", 0)
             error = report.get("error")
+            metadata = report.get("metadata", {})  # ✅ EXTRACT METADATA
             
             formatted_report = {
                 "agent": agent_name,
@@ -542,7 +543,8 @@ async def run_case(case: CaseInput):
                 "claims_count": len(claims),
                 "claims": claims,
                 "icon": get_agent_icon(agent_name),
-                "success": status == "completed"
+                "success": status == "completed",
+                "metadata": metadata  # ✅ INCLUDE METADATA IN OUTPUT
             }
             
             if error:

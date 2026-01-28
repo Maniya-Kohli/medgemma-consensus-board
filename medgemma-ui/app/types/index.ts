@@ -25,6 +25,24 @@ export interface Claim {
   timestamp?: number;
 }
 
+// ============================================================================
+// NEW: Hypothesis Evaluation Types
+// ============================================================================
+export interface EvaluatedHypothesis {
+  diagnosis: string;
+  evaluation: string;
+  score: number;
+}
+
+export interface ReasoningChain {
+  full_chain: string;
+  steps: string[];
+  working_hypothesis: string;
+}
+
+// ============================================================================
+// ENHANCED: AgentReport with all metadata
+// ============================================================================
 export interface AgentReport {
   agent_name?: string;
   agent?: string;
@@ -43,6 +61,18 @@ export interface AgentReport {
   metadata?: {
     draft?: string;
     critique?: string;
+    // ✅ ADD: New fields for agentic reasoning
+    reasoning_chain?: ReasoningChain;
+    differential_evaluated?: EvaluatedHypothesis[];
+    was_revised?: boolean;
+    final_confidence?: number;
+    evidence_summary?: any;
+    focus_areas?: string;
+    initial_finding?: any;
+    consistency_check?: any;
+    execution_log?: any[];
+    signal_mean?: number;
+    signal_std?: number;
   };
 }
 
@@ -67,7 +97,7 @@ export interface AnalysisResult {
   recommended_data_actions: string[];
   reasoning_trace: string[];
   limitations: string[];
-  agent_reports: (AgentReport | VisionReport)[];
+  agent_reports: (AgentReport | VisionReport)[]; // ✅ Kept original type
   audit_markdown?: string;
   thought_process?: string;
   matrix_details?: Record<string, { description: string; findings: string[] }>;

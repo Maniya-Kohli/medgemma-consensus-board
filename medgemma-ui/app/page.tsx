@@ -38,6 +38,7 @@ import {
   VerdictCard,
   DirectivesCard,
   SeverityCard,
+  HypothesisEvaluationPanel,
 } from "./components";
 
 /**
@@ -322,6 +323,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#0a0e14] text-slate-200 flex overflow-hidden selection:bg-blue-500/30">
       {/* Sidebar */}
+
       <aside
         className={`transition-all duration-300 ease-in-out bg-[#151b26] border-r border-[#2a3441] flex flex-col z-20 shrink-0 ${
           sidebarOpen ? "w-72" : "w-0 overflow-hidden border-none"
@@ -329,15 +331,15 @@ export default function App() {
       >
         <div className="flex flex-col h-full min-w-[18rem]">
           {/* Sidebar Header */}
-          <div className="p-4 border-b border-[#2a3441] flex items-center gap-3 shrink-0">
-            <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center shrink-0 shadow-lg shadow-blue-900/20">
-              <Shield className="w-5 h-5 text-white" />
+          <div className="p-4 border-b border-[#2a3441] flex items-center gap-2.5 shrink-0">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
+              <Shield className="w-4 h-4 text-white" />
             </div>
             <div className="truncate">
-              <h1 className="text-md font-bold text-white tracking-tight leading-tight">
+              <h1 className="text-sm text-white leading-tight">
                 Momo Clinical
               </h1>
-              <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest">
+              <p className="text-[9px] text-slate-500 uppercase tracking-wider">
                 Neural Consensus
               </p>
             </div>
@@ -345,35 +347,35 @@ export default function App() {
 
           {/* Sidebar Content */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            <section className="space-y-4">
+            <section className="space-y-3">
               {/* Mode Toggle */}
               <div className="grid grid-cols-2 bg-[#0a0e14] p-1 rounded-lg border border-[#2a3441]">
                 <button
                   onClick={() => setMode("library")}
-                  className={`py-1.5 text-[10px] font-black rounded-md transition-all ${
+                  className={`py-1.5 text-[9px] uppercase tracking-wider rounded-md transition-all ${
                     mode === "library"
-                      ? "bg-blue-600 text-white shadow-sm"
+                      ? "bg-blue-600 text-white"
                       : "text-slate-500 hover:text-slate-300"
                   }`}
                 >
-                  LIBRARY
+                  Library
                 </button>
                 <button
                   onClick={() => setMode("upload")}
-                  className={`py-1.5 text-[10px] font-black rounded-md transition-all ${
+                  className={`py-1.5 text-[9px] uppercase tracking-wider rounded-md transition-all ${
                     mode === "upload"
-                      ? "bg-blue-600 text-white shadow-sm"
+                      ? "bg-blue-600 text-white"
                       : "text-slate-500 hover:text-slate-300"
                   }`}
                 >
-                  NEW CASE
+                  New Case
                 </button>
               </div>
 
               {/* Case Selection / File Upload */}
               {mode === "library" ? (
                 <div>
-                  <label className="block text-[9px] font-black text-slate-500 uppercase mb-1.5 tracking-widest">
+                  <label className="block text-[9px] text-slate-500 uppercase mb-1.5 tracking-wider">
                     Case ID
                   </label>
                   <select
@@ -390,14 +392,14 @@ export default function App() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                  <label className="block text-[9px] text-slate-500 uppercase tracking-wider">
                     Modalities
                   </label>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="flex flex-col gap-1 w-full">
                       <button
                         onClick={() => xrayInputRef.current?.click()}
-                        className={`flex flex-col items-center justify-center gap-1.5 bg-[#1a212d] border rounded-lg p-2.5 text-[10px] transition-all ${
+                        className={`flex flex-col items-center justify-center gap-1.5 bg-[#1a212d] border rounded-lg p-2.5 text-[9px] transition-all ${
                           xrayFile
                             ? "border-blue-500 bg-blue-500/5"
                             : "border-[#2a3441] hover:border-blue-500/50"
@@ -408,18 +410,18 @@ export default function App() {
                             xrayFile ? "text-blue-400" : "text-slate-500"
                           }`}
                         />
-                        <span className="truncate w-full text-center font-bold uppercase">
-                          {xrayFile ? "READY" : "X-RAY"}
+                        <span className="truncate w-full text-center uppercase tracking-wider">
+                          {xrayFile ? "Ready" : "X-Ray"}
                         </span>
                       </button>
-                      <span className="text-[8px] text-center text-slate-600 font-bold uppercase tracking-tighter">
+                      <span className="text-[8px] text-center text-slate-600 uppercase tracking-wider">
                         Max 10MB, JPG/PNG
                       </span>
                     </div>
                     <div className="flex flex-col gap-1 w-full">
                       <button
                         onClick={() => audioInputRef.current?.click()}
-                        className={`flex flex-col items-center justify-center gap-1.5 bg-[#1a212d] border rounded-lg p-2.5 text-[10px] transition-all ${
+                        className={`flex flex-col items-center justify-center gap-1.5 bg-[#1a212d] border rounded-lg p-2.5 text-[9px] transition-all ${
                           audioFile
                             ? "border-emerald-500 bg-emerald-500/5"
                             : "border-[#2a3441] hover:border-emerald-500/50"
@@ -430,11 +432,11 @@ export default function App() {
                             audioFile ? "text-emerald-400" : "text-slate-500"
                           }`}
                         />
-                        <span className="truncate w-full text-center font-bold uppercase">
-                          {audioFile ? "READY" : "AUDIO"}
+                        <span className="truncate w-full text-center uppercase tracking-wider">
+                          {audioFile ? "Ready" : "Audio"}
                         </span>
                       </button>
-                      <span className="text-[8px] text-center text-slate-600 font-bold uppercase tracking-tighter">
+                      <span className="text-[8px] text-center text-slate-600 uppercase tracking-wider">
                         Max 20MB, WAV/MP3
                       </span>
                     </div>
@@ -458,54 +460,54 @@ export default function App() {
 
               {/* Clinical History */}
               <div className="space-y-1.5">
-                <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest flex justify-between">
+                <label className="block text-[9px] text-slate-500 uppercase tracking-wider flex justify-between">
                   Clinical Context
-                  <span className="text-blue-500 animate-pulse">Required</span>
+                  <span className="text-blue-500">Required</span>
                 </label>
                 <textarea
                   value={clinicalHistory}
                   onChange={(e) => setClinicalHistory(e.target.value)}
                   rows={8}
-                  className="w-full bg-[#1a212d] border border-[#2a3441] rounded-lg p-3 text-xs text-slate-200 resize-none outline-none leading-relaxed focus:border-blue-500/50 transition-all placeholder:text-slate-600"
+                  className="w-full bg-[#1a212d] border border-[#2a3441] rounded-lg p-2.5 text-xs text-slate-200 resize-none outline-none leading-relaxed focus:border-blue-500/50 transition-all placeholder:text-slate-600"
                   placeholder={`Describe the case:
-- Patient demographics (e.g. 45yo Male)
-- Primary symptoms & duration
-- Relevant past medical history (PMH)
-- Known allergies or family history
-- Recent vitals or physical findings`}
+• Patient demographics (e.g. 45yo Male)
+• Primary symptoms & duration
+• Relevant past medical history (PMH)
+• Known allergies or family history
+• Recent vitals or physical findings`}
                 />
               </div>
 
               {/* Action Buttons */}
-              <div className="flex gap-2 pt-1">
+              <div className="flex gap-2">
                 <button
                   onClick={analyzeCase}
                   disabled={loading || !clinicalHistory}
-                  className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 py-2.5 rounded-lg font-black text-[10px] flex items-center justify-center gap-2 transition-all active:scale-[0.98] tracking-[0.1em] shadow-lg shadow-blue-900/20"
+                  className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 py-2 rounded-lg text-[9px] flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] tracking-wider uppercase"
                 >
                   {loading ? (
                     <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   ) : (
                     <Play className="w-3 h-3" />
                   )}
-                  RUN ANALYSIS
+                  Run Analysis
                 </button>
                 <button
                   onClick={resetSession}
-                  className="flex-1 bg-[#1a212d] hover:bg-[#232b3a] border border-[#2a3441] text-slate-400 hover:text-white py-2.5 rounded-lg font-black text-[10px] flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                  className="flex-1 bg-[#1a212d] hover:bg-[#232b3a] border border-[#2a3441] text-slate-400 hover:text-white py-2 rounded-lg text-[9px] flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] tracking-wider uppercase"
                 >
                   <RotateCcw className="w-3 h-3" />
-                  RESET
+                  Reset
                 </button>
               </div>
             </section>
 
             {/* Error Display */}
             {error && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex gap-2 items-start animate-in fade-in slide-in-from-top-1">
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex gap-2 items-start">
                 <AlertOctagon className="w-4 h-4 text-red-500 shrink-0" />
                 <div className="flex flex-col min-w-0">
-                  <p className="text-[9px] font-black text-red-500 uppercase tracking-widest leading-none mb-1">
+                  <p className="text-[9px] text-red-500 uppercase tracking-wider leading-none mb-1">
                     System Error
                   </p>
                   <p className="text-[10px] text-slate-300 leading-tight">
@@ -630,9 +632,9 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Tab Content */}
                 {activeTab === "overview" && (
                   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {/* Primary Verdict Section */}
                     {analysisResult?.discrepancy_alert ? (
                       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
                         <VerdictCard
@@ -654,7 +656,24 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Confidence Heatmap placeholder */}
+                    {/* ✅ NEW: Differential Diagnosis Section - MOVED TO VERDICT TAB */}
+                    {analysisResult &&
+                      (() => {
+                        const clinicianReport =
+                          analysisResult.agent_reports.find(
+                            (r: any) =>
+                              r.agent === "LeadClinician" ||
+                              r.agent_name === "clinician",
+                          );
+
+                        return clinicianReport ? (
+                          <HypothesisEvaluationPanel
+                            clinicianReport={clinicianReport}
+                          />
+                        ) : null;
+                      })()}
+
+                    {/* Confidence Matrix (existing) */}
                     {analysisResult && (
                       <div className="bg-[#151b26] border border-[#2a3441] rounded-xl p-5">
                         <div className="flex items-center gap-2 mb-4">
@@ -670,7 +689,6 @@ export default function App() {
                     )}
                   </div>
                 )}
-
                 {activeTab === "evidence" && (
                   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -691,24 +709,23 @@ export default function App() {
                         setShowClinicianModal={setShowClinicianModal}
                       />
                     </div>
+
                     <AgentMetricsPanel analysisResult={analysisResult} />
                   </div>
                 )}
 
                 {activeTab === "audit" && (
-                  <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-top-4 duration-500">
+                  <div className="max-w-4xl mx-auto space-y-4 animate-in slide-in-from-top-4 duration-500">
                     {analysisResult.reasoning_trace?.map((step, i) => (
                       <div
                         key={i}
-                        className="bg-[#151b26] border border-[#2a3441] rounded-xl p-6"
+                        className="bg-[#151b26] border border-[#2a3441] rounded-lg p-4"
                       >
-                        <div className="flex items-center gap-3 mb-3">
-                          <div className="w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-xs font-black text-blue-500">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-[10px] text-blue-500">
                             {i + 1}
                           </div>
-                          <h4 className="text-xs font-bold text-white">
-                            Logic Node
-                          </h4>
+                          <h4 className="text-xs text-white">Logic Node</h4>
                         </div>
                         <div className="text-xs text-slate-300 leading-relaxed prose prose-invert prose-sm max-w-none">
                           <ReactMarkdown>{step}</ReactMarkdown>
@@ -717,8 +734,8 @@ export default function App() {
                     ))}
 
                     {analysisResult.audit_markdown && (
-                      <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-6">
-                        <h4 className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-4">
+                      <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-4">
+                        <h4 className="text-[9px] text-emerald-400 uppercase tracking-wider mb-3">
                           Clinical Audit Log
                         </h4>
                         <div className="text-sm text-slate-300 prose prose-invert prose-sm max-w-none">
