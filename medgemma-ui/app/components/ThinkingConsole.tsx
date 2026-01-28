@@ -101,7 +101,10 @@ export const ThinkingConsole: React.FC<ThinkingConsoleProps> = ({
       {/* Loading Indicator */}
       {steps.length === 0 && !streamingThought && (
         <div className="flex flex-col items-center justify-center py-8 opacity-40">
-          <div className="w-6 h-6 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mb-3" />
+          <div className="relative w-6 h-6 mb-3">
+            <div className="absolute inset-0 border-2 border-blue-500/20 rounded-full" />
+            <div className="absolute inset-0 border-2 border-transparent border-t-blue-500 rounded-full animate-spin" />
+          </div>{" "}
           <p className="text-[9px] text-blue-400 uppercase tracking-wider">
             Establishing Neural Link...
           </p>
