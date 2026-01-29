@@ -2,7 +2,7 @@
 // UTILITY FUNCTIONS
 // ============================================================================
 
-import { AnalysisResult, StreamEvent, AgentReport } from "../types";
+import { AnalysisResult, StreamEvent, AgentReport, Claim } from "../types";
 import { AGENT_ICONS } from "../constants";
 
 export const getSeverity = (score: number): "low" | "medium" | "high" => {
@@ -23,14 +23,13 @@ export const parseStreamFinalEvent = (
   data: StreamEvent,
   currentCaseId: string,
 ): AnalysisResult => {
-  // ✅ FIX: Handle both nested (data.parsed.confidence) and flat (data.confidence) structures
   const verdict = data.parsed || {};
   const agentReports = data.agent_reports || [];
   const auditTrail = data.audit_trail || [];
   const rawLogic = data.raw_logic || "";
   const metadata = data.metadata || {};
 
-  // ✅ FIX: Extract confidence from multiple possible locations
+  // Extract confidence from multiple possible locations
   let confidence = 0;
   if (typeof verdict.confidence === "number") {
     confidence = verdict.confidence;
@@ -38,12 +37,11 @@ export const parseStreamFinalEvent = (
     confidence = data.confidence;
   }
 
-  // ✅ CRITICAL: Extract differential_diagnosis from parsed object (where backend actually sends it)
+  // Extract differential_diagnosis
   const differentialDiagnosis =
     verdict.differential_diagnosis || data.differential_diagnosis || [];
 
-  console.log("🔍 DEBUG - Differential Diagnosis:", differentialDiagnosis);
-  console.log("🔍 DEBUG - Agent Reports:", agentReports);
+  console.log("🔍 DEBUG - Raw Agent Reports:", agentReports);
 
   // Map backend agent reports to frontend structure
   const detailedReports = agentReports.map((report: any) => {
@@ -55,37 +53,124 @@ export const parseStreamFinalEvent = (
     const agentIcon =
       AGENT_ICONS[report.agent as keyof typeof AGENT_ICONS] || "🤖";
 
-    // ✅ FIX: Build differential_evaluated from differential_diagnosis if this is the clinician
-    let differential_evaluated = report.metadata?.differential_evaluated;
+    // ✅ FIX 1: Map status: "completed" to success: true
+    const isSuccess = report.status === "completed";
 
-    // If this is the LeadClinician and we don't have differential_evaluated in metadata
-    if (!differential_evaluated && report.agent === "LeadClinician") {
-      console.log("🔧 Building differential_evaluated for LeadClinician");
+    // ✅ FIX 2: Extract claims from backend - they should be in report.claims
+    let claims: Claim[] = [];
 
-      // Convert string array to evaluated format with scores
-      if (differentialDiagnosis.length > 0) {
-        differential_evaluated = differentialDiagnosis.map(
-          (diagnosis: string, idx: number) => {
-            const baseScore = 90 - idx * 15; // 90, 75, 60, 45, 30...
-            const score = Math.max(10, Math.min(100, baseScore)); // Clamp between 10-100
+    if (
+      report.claims &&
+      Array.isArray(report.claims) &&
+      report.claims.length > 0
+    ) {
+      // Backend sends claims directly
+      claims = report.claims.map((claim: any) => ({
+        label: claim.label || "Finding",
+        value: claim.value || "",
+        confidence: claim.confidence || 0.8,
+        evidence: claim.evidence || [],
+        source_agent: claim.source_agent || report.agent,
+      }));
+      console.log(
+        `✅ ${report.agent} has ${claims.length} claims from backend`,
+      );
+    } else if (report.metadata?.structured_reasoning) {
+      // ✅ FIX 3: Build claims from structured_reasoning if claims[] is empty
+      const structured = report.metadata.structured_reasoning;
+      const conf = report.metadata?.final_confidence || 0.85;
 
-            return {
-              diagnosis: diagnosis,
-              evaluation: `Multi-agent analysis suggests ${diagnosis} as a differential diagnosis. This assessment is based on radiographic findings, acoustic patterns, and clinical history correlation.`,
-              score: score,
-            };
-          },
-        );
+      console.log(
+        `🔧 Building claims for ${report.agent} from structured_reasoning`,
+      );
 
-        console.log(
-          "✅ Created differential_evaluated:",
-          differential_evaluated,
-        );
+      if (structured.observations) {
+        claims.push({
+          label:
+            report.agent === "VisionAgent"
+              ? "Radiographic Observations"
+              : "Acoustic Observations",
+          value: structured.observations,
+          confidence: conf,
+          evidence: [],
+          source_agent: report.agent,
+        });
       }
+
+      if (structured.patterns) {
+        claims.push({
+          label: "Pattern Recognition",
+          value: structured.patterns,
+          confidence: conf,
+          evidence: [],
+          source_agent: report.agent,
+        });
+      }
+
+      if (structured.hypotheses) {
+        claims.push({
+          label: "Clinical Hypotheses",
+          value: structured.hypotheses,
+          confidence: conf - 0.05,
+          evidence: [],
+          source_agent: report.agent,
+        });
+      }
+
+      if (structured.evidence_evaluation) {
+        claims.push({
+          label: "Evidence Evaluation",
+          value: structured.evidence_evaluation,
+          confidence: conf,
+          evidence: [],
+          source_agent: report.agent,
+        });
+      }
+
+      console.log(`✅ Built ${claims.length} claims for ${report.agent}`);
     }
 
-    return {
+    // ✅ FIX 4: Observation fallback chain
+    let observation = report.observation || "";
+    if (!observation && report.metadata?.structured_reasoning) {
+      const sr = report.metadata.structured_reasoning;
+      observation = sr.conclusion || sr.hypotheses || sr.patterns || "";
+    }
+    if (!observation && report.metadata?.full_reasoning_chain) {
+      observation = report.metadata.full_reasoning_chain.substring(0, 500);
+    }
+
+    // ✅ FIX 5: Format execution time
+    let executionTime = "N/A";
+    if (typeof report.execution_time === "number") {
+      executionTime = `${report.execution_time.toFixed(2)}s`;
+    } else if (typeof report.execution_time === "string") {
+      executionTime = report.execution_time;
+    }
+
+    // Build differential_evaluated for LeadClinician
+    let differential_evaluated = report.metadata?.differential_evaluated;
+    if (
+      !differential_evaluated &&
+      report.agent === "LeadClinician" &&
+      differentialDiagnosis.length > 0
+    ) {
+      differential_evaluated = differentialDiagnosis.map(
+        (diagnosis: string, idx: number) => {
+          const baseScore = 90 - idx * 15;
+          const score = Math.max(10, Math.min(100, baseScore));
+          return {
+            diagnosis: diagnosis,
+            evaluation: `Multi-agent analysis suggests ${diagnosis} as a differential diagnosis.`,
+            score: score,
+          };
+        },
+      );
+    }
+
+    const mappedReport: AgentReport = {
       agent_name: agentName,
+      agent: report.agent,
       model:
         report.agent === "VisionAgent"
           ? "MedGemma-1.5-4b"
@@ -93,25 +178,17 @@ export const parseStreamFinalEvent = (
             ? "Google-HeAR"
             : "MedGemma-1.5-4b",
       analysis_status: report.status || "complete",
-      observation: report.observation || "",
-      execution_time: report.execution_time || "0s",
-      claims: report.claims || [
-        {
-          label: "Raw Evidence",
-          value: report.observation || "",
-          confidence: 0.9,
-          evidence: [],
-        },
-      ],
+      observation: observation,
+      execution_time: executionTime,
+      claims: claims, // ✅ FIX: Now properly populated
       icon: agentIcon,
-      success: report.status === "completed",
-      internal_logic: report.observation || "",
-      draft_findings: report.metadata?.draft || "",
-      supervisor_critique: report.metadata?.critique || "",
+      success: isSuccess, // ✅ FIX: Now properly mapped
+      status: report.status,
+      error: report.error,
       metadata: {
         draft: report.metadata?.draft || "",
         critique: report.metadata?.critique || "",
-        differential_evaluated, // ✅ ADD: Include differential diagnosis evaluation
+        differential_evaluated,
         reasoning_chain: report.metadata?.reasoning_chain,
         was_revised: report.metadata?.was_revised,
         final_confidence: report.metadata?.final_confidence,
@@ -122,9 +199,17 @@ export const parseStreamFinalEvent = (
       uncertainties: report.error ? [report.error] : [],
       requested_data: [],
     };
+
+    console.log(`📊 Mapped ${report.agent}:`, {
+      success: mappedReport.success,
+      claimsCount: mappedReport.claims?.length || 0,
+      hasObservation: !!mappedReport.observation,
+    });
+
+    return mappedReport;
   });
 
-  // ✅ FIX: Properly type the level as one of the allowed values
+  // Get confidence level
   const getConfidenceLevel = (
     conf: number,
   ): "high" | "medium" | "low" | "none" => {
@@ -134,22 +219,19 @@ export const parseStreamFinalEvent = (
     return "none";
   };
 
-  // ✅ FIX: Use extracted confidence value with proper typing
   const finalResult: AnalysisResult = {
     case_id: currentCaseId,
     discrepancy_alert: {
       level: getConfidenceLevel(confidence),
-      score: confidence / 100, // Normalize to 0-1 range
+      score: confidence / 100,
       summary:
         verdict.consensus_summary ||
         verdict.reasoning ||
         data.reasoning ||
         "Adjudication complete.",
     },
-    key_contradictions:
-      verdict.differential_diagnosis || data.differential_diagnosis || [],
-    recommended_data_actions:
-      verdict.differential_diagnosis || data.differential_diagnosis || [],
+    key_contradictions: differentialDiagnosis,
+    recommended_data_actions: differentialDiagnosis,
     reasoning_trace: auditTrail.map((entry: string) => {
       return entry
         .replace(/^✅\s*/, "")
@@ -172,6 +254,16 @@ export const parseStreamFinalEvent = (
       focus_areas: metadata.focus_areas || [],
     },
   };
+
+  console.log("✅ Final Result:", {
+    agentCount: finalResult.agent_reports.length,
+    hasDiscrepancy: !!finalResult.discrepancy_alert,
+    agents: finalResult.agent_reports.map((a) => ({
+      name: a.agent_name,
+      success: a.success,
+      claims: a.claims?.length || 0,
+    })),
+  });
 
   return finalResult;
 };

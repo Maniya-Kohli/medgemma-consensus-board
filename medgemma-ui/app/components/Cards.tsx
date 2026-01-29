@@ -12,6 +12,22 @@ import {
 import { AnalysisResult, VisionReport } from "../types";
 import { API_URL } from "../constants";
 
+const parseObservations = (text: string): string[] => {
+  const observations = text
+    .split(/(?:Observation\s*\d+\s*:|Hypothesis\s*\d+\s*:|Pattern\s*\d+\s*:|Finding\s*\d+\s*:|Claim\s*\d+\s*:|•|\n-|\n\*|\n\d+\.)/)
+    .map((s) => s.replace(/^\s*•\s*/g, "").replace(/^\s*-\s*/g, "").trim())
+    .filter((s) => s.length > 0);
+  
+  if (observations.length === 0) {
+    return text
+      .split(/[.!?]+/)
+      .map((s) => s.replace(/^\s*-\s*/g, "").trim())
+      .filter((s) => s.length > 10)
+      .slice(0, 5);
+  }
+  return observations;
+};
+
 // ============================================================================
 // RADIOGRAPHIC CARD (MINIMAL DESIGN)
 // ============================================================================
@@ -132,32 +148,43 @@ export const RadiographicCard: React.FC<RadiographicCardProps> = ({
         ) : (
           <div className="flex-1 space-y-2 overflow-y-auto max-h-[240px] scrollbar-thin">
             {hasFindings && imgReport.claims ? (
-              imgReport.claims.slice(0, 2).map((claim: any, i: number) => (
-                <div
-                  key={i}
-                  className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-2.5"
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] text-blue-400 uppercase tracking-wider">
-                      Finding {i + 1}
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      <div className="h-1 w-12 bg-blue-500/20 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-blue-500 rounded-full transition-all duration-1000"
-                          style={{ width: `${claim.confidence * 100}%` }}
-                        />
-                      </div>
-                      <span className="text-[10px] text-blue-400">
-                        {Math.round(claim.confidence * 100)}%
+              imgReport.claims.slice(0, 2).map((claim: any, i: number) => {
+                const confidence = Math.round(claim.confidence * 100);
+                const confidenceLabel = confidence >= 80 ? "High" : confidence >= 60 ? "Moderate" : "Low";
+                return (
+                  <div
+                    key={i}
+                    className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-2.5"
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] text-blue-400 uppercase tracking-wider">
+                        Finding {i + 1}
                       </span>
+                      <div className="flex items-center gap-1.5 group/tip relative">
+                        <div className="h-1 w-12 bg-blue-500/20 rounded-full overflow-hidden cursor-help">
+                          <div
+                            className="h-full bg-blue-500 rounded-full transition-all duration-1000"
+                            style={{ width: `${confidence}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-blue-400">
+                          {confidence}%
+                        </span>
+                        <div className="absolute top-full right-0 mt-1 z-[100] opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all duration-200 pointer-events-none">
+                          <div className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 shadow-xl max-w-[180px]">
+                            <span className="text-[10px] text-slate-200 leading-relaxed">
+                              {confidenceLabel} confidence — Model's certainty in this finding
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
+                    <p className="text-xs text-slate-300 leading-relaxed line-clamp-2">
+                      {claim.label}
+                    </p>
                   </div>
-                  <p className="text-xs text-slate-300 leading-relaxed line-clamp-2">
-                    {claim.label}
-                  </p>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="flex flex-col items-center justify-center py-8 opacity-20">
                 <Activity className="w-5 h-5 mb-2 text-blue-500 animate-pulse" />
@@ -242,44 +269,22 @@ export const AcousticCard: React.FC<AcousticCardProps> = ({
         </div>
 
         {/* Audio Visualization */}
-        <div className="bg-[#0a0e14] rounded-lg p-3 border border-[#2a3441] mb-3 aspect-square flex flex-col justify-center">
+        <div className="bg-[#0a0e14] rounded-lg p-3 border border-[#2a3441] mb-3 aspect-square flex flex-col justify-center items-center">
           {audioFile ? (
-            <div className="space-y-3">
-              <div className="h-24 flex items-end gap-0.5">
-                {[...Array(32)].map((_, i) => (
+            <div className="text-center">
+              <div className="h-16 flex items-end gap-0.5 justify-center mb-3">
+                {[...Array(20)].map((_, i) => (
                   <div
                     key={i}
-                    className={`flex-1 rounded-t transition-all duration-300 ${isAudioPlaying ? "bg-emerald-500/50" : "bg-emerald-500/20"}`}
+                    className="w-1.5 rounded-t bg-emerald-500/30"
                     style={{
-                      height: `${20 + Math.random() * 80}%`,
-                      animationDelay: `${i * 0.03}s`,
+                      height: `${20 + Math.sin(i * 0.5) * 30 + 20}%`,
                     }}
                   />
                 ))}
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  className="w-8 h-8 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 flex items-center justify-center border border-emerald-500/30"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsAudioPlaying(!isAudioPlaying);
-                  }}
-                >
-                  {isAudioPlaying ? (
-                    <Pause className="w-3.5 h-3.5 text-emerald-400" />
-                  ) : (
-                    <Play className="w-3.5 h-3.5 text-emerald-400 ml-0.5" />
-                  )}
-                </button>
-                <div className="flex-1">
-                  <audio
-                    controls
-                    className="w-full h-6 opacity-60"
-                    src={audioFile ? URL.createObjectURL(audioFile) : ""}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </div>
-              </div>
+              <Volume2 className="w-8 h-8 text-emerald-400/50 mx-auto mb-2" />
+              <p className="text-[10px] text-slate-500">Click to play audio</p>
             </div>
           ) : (
             <div className="text-center py-6 opacity-30">
@@ -299,32 +304,43 @@ export const AcousticCard: React.FC<AcousticCardProps> = ({
               </p>
             </div>
           ) : (
-            acousticReport.claims?.slice(0, 2).map((claim: any, i: number) => (
-              <div
-                key={i}
-                className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-2.5"
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] text-emerald-400 uppercase tracking-wider">
-                    Finding {i + 1}
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <div className="h-1 w-12 bg-emerald-500/20 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-emerald-500 rounded-full transition-all duration-1000"
-                        style={{ width: `${claim.confidence * 100}%` }}
-                      />
-                    </div>
-                    <span className="text-[10px] text-emerald-400">
-                      {Math.round(claim.confidence * 100)}%
+            acousticReport.claims?.slice(0, 2).map((claim: any, i: number) => {
+              const confidence = Math.round(claim.confidence * 100);
+              const confidenceLabel = confidence >= 80 ? "High" : confidence >= 60 ? "Moderate" : "Low";
+              return (
+                <div
+                  key={i}
+                  className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-2.5"
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] text-emerald-400 uppercase tracking-wider">
+                      Finding {i + 1}
                     </span>
+                    <div className="flex items-center gap-1.5 group/tip relative">
+                      <div className="h-1 w-12 bg-emerald-500/20 rounded-full overflow-hidden cursor-help">
+                        <div
+                          className="h-full bg-emerald-500 rounded-full transition-all duration-1000"
+                          style={{ width: `${confidence}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-emerald-400">
+                        {confidence}%
+                      </span>
+                      <div className="absolute top-full right-0 mt-1 z-[100] opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all duration-200 pointer-events-none">
+                        <div className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 shadow-xl max-w-[180px]">
+                          <span className="text-[10px] text-slate-200 leading-relaxed">
+                            {confidenceLabel} confidence — Model's certainty in this finding
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
+                  <p className="text-xs text-slate-300 leading-relaxed line-clamp-2">
+                    {claim.label}
+                  </p>
                 </div>
-                <p className="text-xs text-slate-300 leading-relaxed line-clamp-2">
-                  {claim.label}
-                </p>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
@@ -405,14 +421,24 @@ export const LeadClinicianCard: React.FC<LeadClinicianCardProps> = ({
             </div>
           ) : (
             <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-2.5">
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] text-purple-400 uppercase tracking-wider">
-                  Clinical Summary
+                  Key Findings
                 </span>
               </div>
-              <p className="text-xs text-slate-300 leading-relaxed line-clamp-5">
-                {clinicianReport.observation}
-              </p>
+              <ul className="space-y-1.5">
+                {parseObservations(clinicianReport.observation)
+                  .slice(0, 4)
+                  .map((obs, i) => (
+                    <li
+                      key={i}
+                      className="flex items-start gap-2 text-xs text-slate-300 leading-relaxed"
+                    >
+                      <span className="w-1 h-1 mt-1.5 rounded-full bg-purple-400 flex-shrink-0" />
+                      <span className="line-clamp-2">{obs}</span>
+                    </li>
+                  ))}
+              </ul>
             </div>
           )}
         </div>

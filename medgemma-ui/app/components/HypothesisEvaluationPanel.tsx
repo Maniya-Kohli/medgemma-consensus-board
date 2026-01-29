@@ -101,12 +101,21 @@ export const HypothesisEvaluationPanel: React.FC<
 
                   {/* Score Display */}
                   <div className="flex items-center gap-3">
-                    {/* Progress Bar */}
-                    <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-blue-500 transition-all duration-1000"
-                        style={{ width: `${hypothesis.score}%` }}
-                      />
+                    {/* Progress Bar with Tooltip */}
+                    <div className="group/tip relative">
+                      <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden cursor-help">
+                        <div
+                          className="h-full bg-blue-500 transition-all duration-1000"
+                          style={{ width: `${hypothesis.score}%` }}
+                        />
+                      </div>
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all duration-200 pointer-events-none">
+                        <div className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 shadow-xl whitespace-nowrap">
+                          <span className="text-[10px] text-slate-200">
+                            {hypothesis.score >= 70 ? "High" : hypothesis.score >= 40 ? "Moderate" : "Low"} Likelihood Score
+                          </span>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Score Number */}
