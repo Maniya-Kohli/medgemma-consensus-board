@@ -7,6 +7,7 @@ import {
   Menu,
   X,
   Play,
+  Pause,
   RotateCcw,
   Shield,
   ShieldAlert,
@@ -14,8 +15,10 @@ import {
   ClipboardList,
   AlertOctagon,
   Layers,
-  Volume2, // ✅ ADD THIS
+  Volume2,
   Brain,
+  Info,
+  Maximize2,
 } from "lucide-react";
 
 // Import all types
@@ -26,6 +29,20 @@ import { API_URL, CASES } from "./constants";
 
 // Import utilities
 import { generateSessionId, parseStreamFinalEvent } from "./utils";
+
+const formatObservationText = (text: string): string => {
+  return text
+    .replace(/Observation\s*\d+\s*:\s*/gi, "")
+    .replace(/Pattern\s*\d+\s*:\s*/gi, "")
+    .replace(/Finding\s*\d+\s*:\s*/gi, "")
+    .replace(/Hypothesis\s*\d+\s*:\s*/gi, "")
+    .replace(/Claim\s*\d+\s*:\s*/gi, "")
+    .replace(/•\s*•/g, "•")
+    .replace(/^\s*•\s*/gm, "")
+    .replace(/^\s*-\s*/gm, "")
+    .replace(/\s+-\s+/g, " ")
+    .trim();
+};
 
 // Import components
 import {
@@ -193,6 +210,7 @@ export default function App() {
   const [showClinicianModal, setShowClinicianModal] = useState(false);
   const [showFullVerdict, setShowFullVerdict] = useState(false);
   const [showFullDirectives, setShowFullDirectives] = useState(false);
+  const [showFullImage, setShowFullImage] = useState(false);
 
   // Audio state
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
@@ -205,6 +223,7 @@ export default function App() {
   // Refs
   const xrayInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
+  const audioPlayerRef = useRef<HTMLAudioElement>(null);
 
   // Custom hook
   const { thinkingSteps, streamingThought, isStreaming, streamAnalysis } =
@@ -810,15 +829,15 @@ export default function App() {
                   );
 
                   return (
-                    <div className="grid grid-cols-2 gap-6 p-6">
-                      {/* Left Column: Image + Metadata */}
-                      <div className="space-y-4">
-                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                          Radiographic Image
-                        </h3>
-
-                        {/* Image */}
-                        <div className="aspect-square bg-[#0a0e14] rounded-xl border border-[#2a3441] overflow-hidden">
+                    <div className="flex">
+                      {/* Left: Image Preview */}
+                      <div className="w-80 flex-shrink-0 border-r border-[#2a3441] p-4">
+                        <div className="aspect-square bg-[#0a0e14] rounded-lg border border-[#2a3441] overflow-hidden mb-3 relative group/img cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowFullImage(true);
+                          }}
+                        >
                           {xrayFile ? (
                             <img
                               src={URL.createObjectURL(xrayFile)}
@@ -836,194 +855,116 @@ export default function App() {
                               }}
                             />
                           )}
-                        </div>
-
-                        {/* Metadata */}
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-2.5">
-                            <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-0.5">
-                              Model
-                            </p>
-                            <p className="text-xs font-bold text-white truncate">
-                              {visionAgent?.model || "MedGemma-1.5-4b"}
-                            </p>
+                          {/* Overlay with expand icon */}
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
+                            <div className="bg-blue-500/20 border border-blue-500/40 rounded-lg px-3 py-2 flex items-center gap-2">
+                              <Maximize2 className="w-4 h-4 text-blue-400" />
+                              <span className="text-[10px] text-blue-400 font-medium">Open Full Size</span>
+                            </div>
                           </div>
-                          <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-2.5">
-                            <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-0.5">
-                              Time
-                            </p>
-                            <p className="text-xs font-bold text-white">
-                              {visionAgent?.execution_time || "N/A"}
-                            </p>
+                        </div>
+                        <div className="relative group/model inline-block">
+                          <span className="px-2 py-1 bg-blue-500/10 border border-blue-500/20 rounded text-blue-400 text-[10px] cursor-help">
+                            {visionAgent?.model || "MedGemma"}
+                          </span>
+                          <div className="fixed z-[9999] hidden group-hover/model:block">
+                            <div 
+                              className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 shadow-2xl mt-1"
+                            >
+                              <p className="text-[11px] text-slate-200 whitespace-nowrap">
+                                AI model used for X-ray image analysis
+                              </p>
+                            </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Right Column: Clinical Assessment */}
-                      <div className="space-y-4">
-                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                          Clinical Assessment
-                        </h3>
-
-                        <div className="bg-[#0a0e14] border border-[#2a3441] rounded-xl p-5 h-[calc(100%-32px)] overflow-y-auto scrollbar-thin">
-                          {visionAgent?.observation ? (
-                            <div className="prose prose-invert prose-sm max-w-none">
-                              <ReactMarkdown
-                                components={{
-                                  p: ({ children }) => (
-                                    <p className="text-sm text-slate-300 leading-relaxed mb-3 last:mb-0">
-                                      {children}
-                                    </p>
-                                  ),
-                                  strong: ({ children }) => (
-                                    <strong className="text-white font-semibold">
-                                      {children}
-                                    </strong>
-                                  ),
-                                  ul: ({ children }) => (
-                                    <ul className="space-y-2 my-3">
-                                      {children}
-                                    </ul>
-                                  ),
-                                  li: ({ children }) => (
-                                    <li className="text-sm text-slate-300 leading-relaxed flex gap-2">
-                                      <span className="text-blue-400 mt-0.5 shrink-0">
-                                        •
-                                      </span>
-                                      <span className="flex-1">{children}</span>
-                                    </li>
-                                  ),
-                                  h3: ({ children }) => (
-                                    <h3 className="text-sm font-bold text-white mt-4 mb-2 first:mt-0">
-                                      {children}
-                                    </h3>
-                                  ),
-                                  h4: ({ children }) => (
-                                    <h4 className="text-xs font-bold text-blue-400 mt-3 mb-1.5">
-                                      {children}
-                                    </h4>
-                                  ),
-                                }}
+                      {/* Right: Findings List */}
+                      <div className="flex-1 p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <h3 className="text-xs font-bold text-white">
+                            Detected Findings
+                          </h3>
+                          <div className="relative group/info">
+                            <Info className="w-3.5 h-3.5 text-slate-500 hover:text-blue-400 cursor-help transition-colors" />
+                            <div className="fixed z-[9999] hidden group-hover/info:block">
+                              <div 
+                                className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 shadow-2xl mt-1"
+                                style={{ marginLeft: '-80px' }}
                               >
-                                {visionAgent.observation}
-                              </ReactMarkdown>
+                                <p className="text-[11px] text-slate-200 whitespace-nowrap">
+                                  Observations identified by the vision AI model
+                                </p>
+                              </div>
                             </div>
-                          ) : (
-                            <p className="text-sm text-slate-500 italic">
-                              No detailed observation available
-                            </p>
-                          )}
+                          </div>
                         </div>
+
+                        {visionAgent?.claims && visionAgent.claims.length > 0 ? (
+                          <div className="space-y-2">
+                            {visionAgent.claims.map((claim: any, idx: number) => {
+                              const confidence = Math.round((claim.confidence || 0) * 100);
+                              const confidenceLabel = confidence >= 80 ? "High" : confidence >= 60 ? "Moderate" : "Low";
+                              const confidenceDesc = confidence >= 80 
+                                ? "Strong evidence detected" 
+                                : confidence >= 60 
+                                  ? "Likely present, verify clinically" 
+                                  : "Uncertain, requires review";
+                              
+                              return (
+                                <div
+                                  key={idx}
+                                  className="bg-[#0a0e14] border border-[#2a3441] hover:border-blue-500/30 rounded-lg p-3 transition-all"
+                                >
+                                  {/* Header with confidence */}
+                                  <div className="flex items-start justify-between gap-3 mb-1.5">
+                                    <p className="text-sm text-slate-200 leading-relaxed flex-1">
+                                      {formatObservationText(claim.value || claim.label || "")}
+                                    </p>
+                                    
+                                    {/* Confidence bar - top right */}
+                                    <div className="flex items-center gap-1.5 group/tip relative flex-shrink-0">
+                                      <div className="h-1 w-12 bg-blue-500/20 rounded-full overflow-hidden cursor-help">
+                                        <div 
+                                          className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                                          style={{ width: `${confidence}%` }}
+                                        />
+                                      </div>
+                                      <span className="text-[10px] text-blue-400 font-medium">
+                                        {confidence}%
+                                      </span>
+                                      
+                                      {/* Tooltip */}
+                                      <div className="absolute bottom-full right-0 mb-2 z-50 opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all duration-200 pointer-events-none">
+                                        <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
+                                          <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-blue-400" />
+                                            <span className="text-[10px] font-bold text-white">{confidenceLabel} Confidence</span>
+                                          </div>
+                                          <p className="text-[10px] text-slate-400 mt-1">
+                                            {confidenceDesc}
+                                          </p>
+                                        </div>
+                                        <div className="absolute right-4 -bottom-1 w-2 h-2 bg-slate-900 border-r border-b border-slate-700 rotate-45" />
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : visionAgent?.observation ? (
+                          <div className="bg-[#0a0e14] border border-[#2a3441] rounded-lg p-4">
+                            <p className="text-sm text-slate-300 leading-relaxed">
+                              {formatObservationText(visionAgent.observation)}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-slate-500 italic">No findings available</p>
+                        )}
                       </div>
                     </div>
                   );
-                })()}
-
-              {/* Key Findings Section (Below, Full Width) */}
-              {/* Key Findings Section (Below, Full Width) */}
-              {analysisResult &&
-                (() => {
-                  const visionAgent = analysisResult.agent_reports.find(
-                    (r) =>
-                      r.agent_name === "imaging" || r.agent === "VisionAgent",
-                  );
-
-                  return visionAgent?.claims &&
-                    visionAgent.claims.length > 0 ? (
-                    <div className="border-t border-[#2a3441] px-6 py-4 bg-[#0a0e14]/50">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-widest">
-                          Key Findings
-                        </h3>
-                        <span className="text-[10px] font-bold text-slate-500">
-                          {visionAgent.claims.length} Total
-                        </span>
-                      </div>
-                      <div
-                        className="grid gap-3"
-                        style={{
-                          gridTemplateColumns:
-                            "repeat(auto-fit, minmax(300px, 1fr))",
-                        }}
-                      >
-                        {visionAgent.claims.map((claim: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-3 hover:bg-blue-500/10 transition-colors"
-                          >
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-1.5">
-                                <div className="w-5 h-5 rounded bg-blue-500/20 flex items-center justify-center">
-                                  <span className="text-[10px] font-black text-blue-400">
-                                    {idx + 1}
-                                  </span>
-                                </div>
-                                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">
-                                  Finding {idx + 1}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <div className="h-1 w-12 bg-slate-800 rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full bg-blue-500 rounded-full"
-                                    style={{
-                                      width: `${(claim.confidence || 0) * 100}%`,
-                                    }}
-                                  />
-                                </div>
-                                <span className="text-[10px] font-bold text-blue-400">
-                                  {Math.round((claim.confidence || 0) * 100)}%
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Render with ReactMarkdown for proper formatting */}
-                            <div className="prose prose-invert prose-sm max-w-none">
-                              <ReactMarkdown
-                                components={{
-                                  p: ({ children }) => (
-                                    <p className="text-sm text-slate-300 leading-relaxed mb-2 last:mb-0">
-                                      {children}
-                                    </p>
-                                  ),
-                                  strong: ({ children }) => (
-                                    <strong className="text-white font-semibold">
-                                      {children}
-                                    </strong>
-                                  ),
-                                  ul: ({ children }) => (
-                                    <ul className="space-y-1 my-2">
-                                      {children}
-                                    </ul>
-                                  ),
-                                  li: ({ children }) => (
-                                    <li className="text-sm text-slate-300 leading-relaxed flex gap-2 items-start">
-                                      <span className="text-blue-400 mt-0.5 shrink-0">
-                                        •
-                                      </span>
-                                      <span className="flex-1">{children}</span>
-                                    </li>
-                                  ),
-                                  h3: ({ children }) => (
-                                    <h3 className="text-sm font-bold text-white mt-3 mb-1.5 first:mt-0">
-                                      {children}
-                                    </h3>
-                                  ),
-                                  h4: ({ children }) => (
-                                    <h4 className="text-xs font-bold text-blue-400 mt-2 mb-1">
-                                      {children}
-                                    </h4>
-                                  ),
-                                }}
-                              >
-                                {claim.value}
-                              </ReactMarkdown>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null;
                 })()}
             </div>
           </div>
@@ -1061,7 +1002,8 @@ export default function App() {
               </button>
             </div>
 
-            <div className="overflow-y-auto max-h-[calc(85vh-80px)] p-6 space-y-6">
+            {/* Content */}
+            <div className="overflow-y-auto max-h-[calc(85vh-80px)]">
               {analysisResult &&
                 (() => {
                   const acousticAgent = analysisResult.agent_reports.find(
@@ -1070,86 +1012,130 @@ export default function App() {
                   );
 
                   return (
-                    <>
-                      {/* Observation */}
-                      {acousticAgent?.observation && (
-                        <div>
-                          <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest mb-3">
-                            Clinical Observation
-                          </h3>
-                          <div className="bg-[#0a0e14] border border-[#2a3441] rounded-xl p-5 prose prose-invert prose-sm max-w-none">
-                            <p className="text-sm text-slate-300 leading-relaxed">
-                              {acousticAgent.observation}
-                            </p>
+                    <div className="flex">
+                      {/* Left: Audio Player */}
+                      <div className="w-80 flex-shrink-0 border-r border-[#2a3441] p-4">
+                        <div className="aspect-square bg-[#0a0e14] rounded-lg border border-[#2a3441] overflow-hidden mb-3 flex flex-col items-center justify-center p-4">
+                          {/* Audio visualization bars */}
+                          <div className="h-20 flex items-end gap-1 mb-4">
+                            {[...Array(24)].map((_, i) => (
+                              <div
+                                key={i}
+                                className={`w-2 rounded-t transition-all duration-300 ${isAudioPlaying ? 'bg-emerald-500 animate-pulse' : 'bg-emerald-500/40'}`}
+                                style={{
+                                  height: `${20 + Math.sin(i * 0.5) * 30 + 20}%`,
+                                  animationDelay: `${i * 0.05}s`,
+                                }}
+                              />
+                            ))}
                           </div>
+                          
+                          {/* Audio player */}
+                          {audioFile && (
+                            <audio
+                              ref={audioPlayerRef}
+                              src={URL.createObjectURL(audioFile)}
+                              onPlay={() => setIsAudioPlaying(true)}
+                              onPause={() => setIsAudioPlaying(false)}
+                              onEnded={() => setIsAudioPlaying(false)}
+                              controls
+                              className="w-full"
+                            />
+                          )}
                         </div>
-                      )}
-
-                      {/* All Claims */}
-                      {acousticAgent?.claims &&
-                        acousticAgent.claims.length > 0 && (
-                          <div>
-                            <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest mb-3">
-                              All Findings ({acousticAgent.claims.length})
-                            </h3>
-                            <div className="space-y-3">
-                              {acousticAgent.claims.map(
-                                (claim: any, idx: number) => (
-                                  <div
-                                    key={idx}
-                                    className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4"
-                                  >
-                                    <div className="flex items-center justify-between mb-2">
-                                      <span className="text-xs font-bold text-emerald-400">
-                                        {claim.label}
-                                      </span>
-                                      <div className="flex items-center gap-2">
-                                        <div className="h-1.5 w-20 bg-slate-800 rounded-full overflow-hidden">
-                                          <div
-                                            className="h-full bg-emerald-500 rounded-full"
-                                            style={{
-                                              width: `${(claim.confidence || 0) * 100}%`,
-                                            }}
-                                          />
-                                        </div>
-                                        <span className="text-xs font-bold text-emerald-400">
-                                          {Math.round(
-                                            (claim.confidence || 0) * 100,
-                                          )}
-                                          %
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <p className="text-sm text-slate-300 leading-relaxed">
-                                      {claim.value}
-                                    </p>
-                                  </div>
-                                ),
-                              )}
+                        <div className="relative group/model inline-block">
+                          <span className="px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded text-emerald-400 text-[10px] cursor-help">
+                            {acousticAgent?.model || "Google-HeAR"}
+                          </span>
+                          <div className="fixed z-[9999] hidden group-hover/model:block">
+                            <div className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 shadow-2xl mt-1">
+                              <p className="text-[11px] text-slate-200 whitespace-nowrap">
+                                AI model used for audio auscultation analysis
+                              </p>
                             </div>
                           </div>
-                        )}
-
-                      {/* Metadata */}
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3">
-                          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-0.5">
-                            Model
-                          </p>
-                          <p className="text-xs font-bold text-white">
-                            {acousticAgent?.model || "Google-HeAR"}
-                          </p>
-                        </div>
-                        <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3">
-                          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-0.5">
-                            Time
-                          </p>
-                          <p className="text-xs font-bold text-white">
-                            {acousticAgent?.execution_time || "N/A"}
-                          </p>
                         </div>
                       </div>
-                    </>
+
+                      {/* Right: Findings List */}
+                      <div className="flex-1 p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <h3 className="text-xs font-bold text-white">
+                            Detected Findings
+                          </h3>
+                          <div className="relative group/info">
+                            <Info className="w-3.5 h-3.5 text-slate-500 hover:text-emerald-400 cursor-help transition-colors" />
+                            <div className="fixed z-[9999] hidden group-hover/info:block">
+                              <div className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 shadow-2xl mt-1" style={{ marginLeft: '-80px' }}>
+                                <p className="text-[11px] text-slate-200 whitespace-nowrap">
+                                  Observations identified by the acoustic AI model
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {acousticAgent?.claims && acousticAgent.claims.length > 0 ? (
+                          <div className="space-y-2">
+                            {acousticAgent.claims.map((claim: any, idx: number) => {
+                              const confidence = Math.round((claim.confidence || 0) * 100);
+                              const confidenceLabel = confidence >= 80 ? "High" : confidence >= 60 ? "Moderate" : "Low";
+                              const confidenceDesc = confidence >= 80 
+                                ? "Strong evidence detected" 
+                                : confidence >= 60 
+                                  ? "Likely present, verify clinically" 
+                                  : "Uncertain, requires review";
+                              
+                              return (
+                                <div
+                                  key={idx}
+                                  className="bg-[#0a0e14] border border-[#2a3441] hover:border-emerald-500/30 rounded-lg p-3 transition-all"
+                                >
+                                  <div className="flex items-start justify-between gap-3 mb-1.5">
+                                    <p className="text-sm text-slate-200 leading-relaxed flex-1">
+                                      {formatObservationText(claim.value || claim.label || "")}
+                                    </p>
+                                    
+                                    <div className="flex items-center gap-1.5 group/tip relative flex-shrink-0">
+                                      <div className="h-1 w-12 bg-emerald-500/20 rounded-full overflow-hidden cursor-help">
+                                        <div 
+                                          className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                                          style={{ width: `${confidence}%` }}
+                                        />
+                                      </div>
+                                      <span className="text-[10px] text-emerald-400 font-medium">
+                                        {confidence}%
+                                      </span>
+                                      
+                                      <div className="absolute bottom-full right-0 mb-2 z-50 opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all duration-200 pointer-events-none">
+                                        <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
+                                          <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                                            <span className="text-[10px] font-bold text-white">{confidenceLabel} Confidence</span>
+                                          </div>
+                                          <p className="text-[10px] text-slate-400 mt-1">
+                                            {confidenceDesc}
+                                          </p>
+                                        </div>
+                                        <div className="absolute right-4 -bottom-1 w-2 h-2 bg-slate-900 border-r border-b border-slate-700 rotate-45" />
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : acousticAgent?.observation ? (
+                          <div className="bg-[#0a0e14] border border-[#2a3441] rounded-lg p-4">
+                            <p className="text-sm text-slate-300 leading-relaxed">
+                              {formatObservationText(acousticAgent.observation)}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-slate-500 italic">No findings available</p>
+                        )}
+                      </div>
+                    </div>
                   );
                 })()}
             </div>
@@ -1189,7 +1175,8 @@ export default function App() {
               </button>
             </div>
 
-            <div className="overflow-y-auto max-h-[calc(85vh-80px)] p-6 space-y-6">
+            {/* Content */}
+            <div className="overflow-y-auto max-h-[calc(85vh-80px)]">
               {analysisResult &&
                 (() => {
                   const clinicianAgent = analysisResult.agent_reports.find(
@@ -1199,54 +1186,96 @@ export default function App() {
                   );
 
                   return (
-                    <>
-                      {/* Observation */}
-                      {clinicianAgent?.observation && (
-                        <div>
-                          <h3 className="text-xs font-black text-purple-400 uppercase tracking-widest mb-3">
-                            Clinical Synthesis
-                          </h3>
-                          <div className="bg-[#0a0e14] border border-[#2a3441] rounded-xl p-5 prose prose-invert prose-sm max-w-none">
-                            <ReactMarkdown
-                              components={{
-                                p: ({ children }) => (
-                                  <p className="text-sm text-slate-300 leading-relaxed mb-3 last:mb-0">
-                                    {children}
-                                  </p>
-                                ),
-                                strong: ({ children }) => (
-                                  <strong className="text-white font-semibold">
-                                    {children}
-                                  </strong>
-                                ),
-                              }}
-                            >
-                              {clinicianAgent.observation}
-                            </ReactMarkdown>
+                    <div className="flex">
+                      {/* Left: Brain Visualization */}
+                      <div className="w-80 flex-shrink-0 border-r border-[#2a3441] p-4">
+                        <div className="aspect-square bg-[#0a0e14] rounded-lg border border-[#2a3441] overflow-hidden mb-3 flex items-center justify-center">
+                          <div className="text-center">
+                            <Brain className="w-16 h-16 text-purple-500/30 mx-auto mb-2" />
+                            <p className="text-[10px] text-slate-500">Clinical Synthesis</p>
                           </div>
                         </div>
-                      )}
-
-                      {/* Metadata */}
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-3">
-                          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-0.5">
-                            Model
-                          </p>
-                          <p className="text-xs font-bold text-white">
+                        <div className="relative group/model inline-block">
+                          <span className="px-2 py-1 bg-purple-500/10 border border-purple-500/20 rounded text-purple-400 text-[10px] cursor-help">
                             {clinicianAgent?.model || "MedGemma-1.5-4b"}
-                          </p>
-                        </div>
-                        <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-3">
-                          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-0.5">
-                            Time
-                          </p>
-                          <p className="text-xs font-bold text-white">
-                            {clinicianAgent?.execution_time || "N/A"}
-                          </p>
+                          </span>
+                          <div className="fixed z-[9999] hidden group-hover/model:block">
+                            <div className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 shadow-2xl mt-1">
+                              <p className="text-[11px] text-slate-200 whitespace-nowrap">
+                                AI model used for clinical synthesis
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </>
+
+                      {/* Right: Clinical Observations */}
+                      <div className="flex-1 p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <h3 className="text-xs font-bold text-white">
+                            Clinical Observations
+                          </h3>
+                          <div className="relative group/info">
+                            <Info className="w-3.5 h-3.5 text-slate-500 hover:text-purple-400 cursor-help transition-colors" />
+                            <div className="fixed z-[9999] hidden group-hover/info:block">
+                              <div className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 shadow-2xl mt-1" style={{ marginLeft: '-80px' }}>
+                                <p className="text-[11px] text-slate-200 whitespace-nowrap">
+                                  Synthesized clinical observations by lead clinician AI
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {clinicianAgent?.observation ? (
+                          <div className="space-y-2">
+                            {formatObservationText(clinicianAgent.observation)
+                              .split(/[.!?]+/)
+                              .filter((s: string) => s.trim().length > 10)
+                              .slice(0, 8)
+                              .map((observation: string, idx: number) => (
+                                <div
+                                  key={idx}
+                                  className="bg-[#0a0e14] border border-[#2a3441] hover:border-purple-500/30 rounded-lg p-3 transition-all"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <p className="text-sm text-slate-200 leading-relaxed flex-1">
+                                      {observation.trim()}
+                                    </p>
+                                    
+                                    <div className="flex items-center gap-1.5 group/tip relative flex-shrink-0">
+                                      <div className="h-1 w-12 bg-purple-500/20 rounded-full overflow-hidden cursor-help">
+                                        <div 
+                                          className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                                          style={{ width: '85%' }}
+                                        />
+                                      </div>
+                                      <span className="text-[10px] text-purple-400 font-medium">
+                                        85%
+                                      </span>
+                                      
+                                      <div className="absolute bottom-full right-0 mb-2 z-50 opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all duration-200 pointer-events-none">
+                                        <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
+                                          <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-purple-400" />
+                                            <span className="text-[10px] font-bold text-white">High Confidence</span>
+                                          </div>
+                                          <p className="text-[10px] text-slate-400 mt-1">
+                                            Strong clinical correlation
+                                          </p>
+                                        </div>
+                                        <div className="absolute right-4 -bottom-1 w-2 h-2 bg-slate-900 border-r border-b border-slate-700 rotate-45" />
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-slate-500 italic">No observations available</p>
+                        )}
+                      </div>
+                    </div>
                   );
                 })()}
             </div>
@@ -1302,13 +1331,22 @@ export default function App() {
                     %
                   </span>
                 </div>
-                <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-1000"
-                    style={{
-                      width: `${(analysisResult?.discrepancy_alert?.score || 0) * 100}%`,
-                    }}
-                  />
+                <div className="group/tip relative">
+                  <div className="h-2 bg-slate-800 rounded-full overflow-hidden cursor-help">
+                    <div
+                      className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-1000"
+                      style={{
+                        width: `${(analysisResult?.discrepancy_alert?.score || 0) * 100}%`,
+                      }}
+                    />
+                  </div>
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all duration-200 pointer-events-none">
+                    <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
+                      <span className="text-[10px] text-slate-200">
+                        Overall agreement level between AI agents
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1495,7 +1533,51 @@ export default function App() {
         </div>
       )}
 
-      {/* Global Styles */}
+      {/* Full Image Modal */}
+      {showFullImage && (
+        <div
+          className="fixed inset-0 bg-black/95 backdrop-blur-md z-[100] flex items-center justify-center p-8 animate-in fade-in duration-200"
+          onClick={() => setShowFullImage(false)}
+        >
+          {/* Close button */}
+          <button
+            onClick={() => setShowFullImage(false)}
+            className="absolute top-6 right-6 p-3 bg-slate-800/80 hover:bg-slate-700 rounded-full transition-colors group z-10"
+          >
+            <X className="w-6 h-6 text-slate-400 group-hover:text-white" />
+          </button>
+          
+          {/* Image container */}
+          <div 
+            className="relative max-w-[90vw] max-h-[90vh] bg-[#0a0e14] rounded-xl border border-[#2a3441] overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {xrayFile ? (
+              <img
+                src={URL.createObjectURL(xrayFile)}
+                alt="Chest X-ray - Full Size"
+                className="max-w-full max-h-[85vh] object-contain"
+              />
+            ) : analysisResult?.case_id ? (
+              <img
+                src={`${API_URL}/xray/${analysisResult.case_id}`}
+                alt="Chest X-ray - Full Size"
+                className="max-w-full max-h-[85vh] object-contain"
+              />
+            ) : (
+              <div className="p-20 text-center">
+                <p className="text-slate-500">No image available</p>
+              </div>
+            )}
+          </div>
+          
+          {/* Instructions */}
+          <p className="absolute bottom-6 left-1/2 -translate-x-1/2 text-[11px] text-slate-500">
+            Click anywhere or press ESC to close
+          </p>
+        </div>
+      )}
+
       {/* Global Styles */}
       <style
         dangerouslySetInnerHTML={{
