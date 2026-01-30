@@ -25,7 +25,7 @@ import {
 import type { AnalysisResult, CaseItem } from "./types";
 
 // Import constants
-import { API_URL, CASES } from "./constants";
+import { NEXT_PUBLIC_API_URL, CASES } from "./constants";
 
 // Import utilities
 import { generateSessionId, parseStreamFinalEvent } from "./utils";
@@ -78,7 +78,7 @@ const useAnalysisStream = () => {
     setThinkingSteps(["🎯 Establishing connection to Clinical Blackboard..."]);
 
     try {
-      const response = await fetch(`${API_URL}/run`, {
+      const response = await fetch(`${NEXT_PUBLIC_API_URL}/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -308,10 +308,13 @@ export default function App() {
         if (xrayFile) formData.append("xray", xrayFile);
         if (audioFile) formData.append("audio", audioFile);
 
-        const uploadRes = await fetch(`${API_URL}/upload/${currentCaseId}`, {
-          method: "POST",
-          body: formData,
-        });
+        const uploadRes = await fetch(
+          `${NEXT_PUBLIC_API_URL}/upload/${currentCaseId}`,
+          {
+            method: "POST",
+            body: formData,
+          },
+        );
 
         if (!uploadRes.ok) throw new Error("Artifact caching failed.");
       }
@@ -851,7 +854,7 @@ export default function App() {
                             />
                           ) : (
                             <img
-                              src={`${API_URL}/xray/${analysisResult.case_id}`}
+                              src={`${NEXT_PUBLIC_API_URL}/xray/${analysisResult.case_id}`}
                               alt="Chest X-ray"
                               className="w-full h-full object-contain"
                               onError={(e) => {
@@ -1618,7 +1621,7 @@ export default function App() {
               />
             ) : analysisResult?.case_id ? (
               <img
-                src={`${API_URL}/xray/${analysisResult.case_id}`}
+                src={`${NEXT_PUBLIC_API_URL}/xray/${analysisResult.case_id}`}
                 alt="Chest X-ray - Full Size"
                 className="max-w-full max-h-[85vh] object-contain"
               />
