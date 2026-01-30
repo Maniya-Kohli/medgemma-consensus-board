@@ -37,6 +37,7 @@ app = FastAPI(title="Consensus Board API", version="0.5.0 (MedGemma-Native)")
 
 # --- CORS CONFIGURATION ---
 # Define the origins that are allowed to make requests to this API
+vercel_wildcard = r"https://momo-clinical-.*-maniyas-projects\.vercel\.app"
 origins = [
     "http://localhost:3000",    
     "http://127.0.0.1:3000",
@@ -46,11 +47,16 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origin_regex=vercel_wildcard, 
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://momo-clinical.vercel.app", # Your clean main URL
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Content-Disposition", "X-Suggested-Filename"] # Helpful for file handling
+    expose_headers=["Content-Disposition", "X-Suggested-Filename"]
 )
 
 
