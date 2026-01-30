@@ -10,14 +10,21 @@ import {
   Pause,
 } from "lucide-react";
 import { AnalysisResult, VisionReport } from "../types";
-import { API_URL } from "../constants";
+import { NEXT_PUBLIC_API_URL } from "../constants";
 
 const parseObservations = (text: string): string[] => {
   const observations = text
-    .split(/(?:Observation\s*\d+\s*:|Hypothesis\s*\d+\s*:|Pattern\s*\d+\s*:|Finding\s*\d+\s*:|Claim\s*\d+\s*:|•|\n-|\n\*|\n\d+\.)/)
-    .map((s) => s.replace(/^\s*•\s*/g, "").replace(/^\s*-\s*/g, "").trim())
+    .split(
+      /(?:Observation\s*\d+\s*:|Hypothesis\s*\d+\s*:|Pattern\s*\d+\s*:|Finding\s*\d+\s*:|Claim\s*\d+\s*:|•|\n-|\n\*|\n\d+\.)/,
+    )
+    .map((s) =>
+      s
+        .replace(/^\s*•\s*/g, "")
+        .replace(/^\s*-\s*/g, "")
+        .trim(),
+    )
     .filter((s) => s.length > 0);
-  
+
   if (observations.length === 0) {
     return text
       .split(/[.!?]+/)
@@ -113,7 +120,7 @@ export const RadiographicCard: React.FC<RadiographicCardProps> = ({
             />
           ) : analysisResult?.case_id ? (
             <img
-              src={`${API_URL}/xray/${analysisResult.case_id}`}
+              src={`${NEXT_PUBLIC_API_URL}/xray/${analysisResult.case_id}`}
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
               alt="X-Ray"
               onError={(e) => {
@@ -150,7 +157,12 @@ export const RadiographicCard: React.FC<RadiographicCardProps> = ({
             {hasFindings && imgReport.claims ? (
               imgReport.claims.slice(0, 2).map((claim: any, i: number) => {
                 const confidence = Math.round(claim.confidence * 100);
-                const confidenceLabel = confidence >= 80 ? "High" : confidence >= 60 ? "Moderate" : "Low";
+                const confidenceLabel =
+                  confidence >= 80
+                    ? "High"
+                    : confidence >= 60
+                      ? "Moderate"
+                      : "Low";
                 return (
                   <div
                     key={i}
@@ -173,7 +185,8 @@ export const RadiographicCard: React.FC<RadiographicCardProps> = ({
                         <div className="absolute top-full right-0 mt-1 z-[100] opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all duration-200 pointer-events-none">
                           <div className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 shadow-xl max-w-[180px]">
                             <span className="text-[10px] text-slate-200 leading-relaxed">
-                              {confidenceLabel} confidence — Model's certainty in this finding
+                              {confidenceLabel} confidence — Model's certainty
+                              in this finding
                             </span>
                           </div>
                         </div>
@@ -306,7 +319,12 @@ export const AcousticCard: React.FC<AcousticCardProps> = ({
           ) : (
             acousticReport.claims?.slice(0, 2).map((claim: any, i: number) => {
               const confidence = Math.round(claim.confidence * 100);
-              const confidenceLabel = confidence >= 80 ? "High" : confidence >= 60 ? "Moderate" : "Low";
+              const confidenceLabel =
+                confidence >= 80
+                  ? "High"
+                  : confidence >= 60
+                    ? "Moderate"
+                    : "Low";
               return (
                 <div
                   key={i}
@@ -329,7 +347,8 @@ export const AcousticCard: React.FC<AcousticCardProps> = ({
                       <div className="absolute top-full right-0 mt-1 z-[100] opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all duration-200 pointer-events-none">
                         <div className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 shadow-xl max-w-[180px]">
                           <span className="text-[10px] text-slate-200 leading-relaxed">
-                            {confidenceLabel} confidence — Model's certainty in this finding
+                            {confidenceLabel} confidence — Model's certainty in
+                            this finding
                           </span>
                         </div>
                       </div>
