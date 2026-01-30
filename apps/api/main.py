@@ -34,9 +34,10 @@ app = FastAPI(title="Consensus Board API", version="0.5.0 (MedGemma-Native)")
 # --- CORS CONFIGURATION ---
 # Define the origins that are allowed to make requests to this API
 origins = [
-    "http://localhost:3000",    # React/Next.js default port
+    "http://localhost:3000",    
     "http://127.0.0.1:3000",
-    # Add any other origins (production domains) here
+    "https://momo-clinical-msaf9zbyy-maniyas-projects.vercel.app",
+    "https://momo-clinical.vercel.app", 
 ]
 
 app.add_middleware(
