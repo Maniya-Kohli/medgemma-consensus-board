@@ -13,6 +13,10 @@ import httpx
 import asyncio
 from fastapi.responses import StreamingResponse
 import sys
+from pathlib import Path
+from fastapi import HTTPException
+from fastapi.staticfiles import StaticFiles
+
 
 
 
@@ -42,11 +46,15 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,      # Or ["*"] to allow all (less secure, but okay for local dev)
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],        # Allows GET, POST, OPTIONS, etc.
-    allow_headers=["*"],        # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Disposition", "X-Suggested-Filename"] # Helpful for file handling
 )
+
+
+
 # --------------------------
 
 API_URL = os.getenv("API_URL")
@@ -80,6 +88,38 @@ async def upload_case_artifacts(
             shutil.copyfileobj(audio.file, file_object)
 
     return {"message": "Files cached successfully", "case_id": case_id}
+
+
+
+# 1. Define your base artifacts directory relative to main.py
+BASE_DIR = Path(__file__).resolve().parent.parent.parent # Adjust based on your folder depth
+ARTIFACTS_DIR = BASE_DIR / "artifacts" / "runs"
+
+# This makes every file in artifacts/runs accessible via your-api-url.com/view-artifacts/...
+app.mount("/view-artifacts", StaticFiles(directory=str(ARTIFACTS_DIR)), name="artifacts")
+
+@app.get("/debug/artifacts/{case_id}")
+async def list_case_artifacts(case_id: str):
+    case_path = ARTIFACTS_DIR / case_id
+    
+    if not case_path.exists():
+        raise HTTPException(status_code=404, detail=f"No artifacts found for case: {case_id}")
+        
+    # Walk the directory and list files
+    files = []
+    for file in case_path.iterdir():
+        if file.is_file():
+            files.append({
+                "name": file.name,
+                "size_kb": round(file.stat().st_size / 1024, 2),
+                "url": f"/view-artifacts/{case_id}/{file.name}" # Link to the static mount below
+            })
+            
+    return {
+        "case_id": case_id,
+        "location": str(case_path),
+        "files": files
+    }
 
 # -----------------------------
 # HELPER: ROBUST JSON PARSER
