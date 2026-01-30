@@ -95,6 +95,8 @@ async def upload_case_artifacts(
 BASE_DIR = Path(__file__).resolve().parent.parent.parent # Adjust based on your folder depth
 ARTIFACTS_DIR = BASE_DIR / "artifacts" / "runs"
 
+ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+
 # This makes every file in artifacts/runs accessible via your-api-url.com/view-artifacts/...
 app.mount("/view-artifacts", StaticFiles(directory=str(ARTIFACTS_DIR)), name="artifacts")
 
