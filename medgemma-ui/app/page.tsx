@@ -400,6 +400,7 @@ export default function App() {
                   <select
                     value={selectedCase}
                     onChange={(e) => setSelectedCase(e.target.value)}
+                    aria-label="Select Case ID"
                     className="w-full bg-[#1a212d] border border-[#2a3441] rounded-lg px-2.5 py-2 text-xs text-white outline-none cursor-pointer focus:border-blue-500/50"
                   >
                     {Object.keys(CASES).map((c) => (
@@ -466,6 +467,7 @@ export default function App() {
                     className="hidden"
                     accept=".jpg,.jpeg,.png,image/jpeg,image/png"
                     onChange={handleXrayChange}
+                    aria-label="Upload X-Ray image"
                   />
                   <input
                     type="file"
@@ -473,6 +475,7 @@ export default function App() {
                     className="hidden"
                     accept=".wav,.mp3,audio/wav,audio/mpeg"
                     onChange={handleAudioChange}
+                    aria-label="Upload audio file"
                   />
                 </div>
               )}
@@ -813,6 +816,7 @@ export default function App() {
               </div>
               <button
                 onClick={() => setShowImagingModal(false)}
+                aria-label="Close imaging modal"
                 className="p-2 hover:bg-white/5 rounded-lg transition-colors group"
               >
                 <X className="w-4 h-4 text-slate-400 group-hover:text-white" />
@@ -832,7 +836,8 @@ export default function App() {
                     <div className="flex">
                       {/* Left: Image Preview */}
                       <div className="w-80 flex-shrink-0 border-r border-[#2a3441] p-4">
-                        <div className="aspect-square bg-[#0a0e14] rounded-lg border border-[#2a3441] overflow-hidden mb-3 relative group/img cursor-pointer"
+                        <div
+                          className="aspect-square bg-[#0a0e14] rounded-lg border border-[#2a3441] overflow-hidden mb-3 relative group/img cursor-pointer"
                           onClick={(e) => {
                             e.stopPropagation();
                             setShowFullImage(true);
@@ -859,7 +864,9 @@ export default function App() {
                           <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
                             <div className="bg-blue-500/20 border border-blue-500/40 rounded-lg px-3 py-2 flex items-center gap-2">
                               <Maximize2 className="w-4 h-4 text-blue-400" />
-                              <span className="text-[10px] text-blue-400 font-medium">Open Full Size</span>
+                              <span className="text-[10px] text-blue-400 font-medium">
+                                Open Full Size
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -868,9 +875,7 @@ export default function App() {
                             {visionAgent?.model || "MedGemma"}
                           </span>
                           <div className="fixed z-[9999] hidden group-hover/model:block">
-                            <div 
-                              className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 shadow-2xl mt-1"
-                            >
+                            <div className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 shadow-2xl mt-1">
                               <p className="text-[11px] text-slate-200 whitespace-nowrap">
                                 AI model used for X-ray image analysis
                               </p>
@@ -888,9 +893,9 @@ export default function App() {
                           <div className="relative group/info">
                             <Info className="w-3.5 h-3.5 text-slate-500 hover:text-blue-400 cursor-help transition-colors" />
                             <div className="fixed z-[9999] hidden group-hover/info:block">
-                              <div 
+                              <div
                                 className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 shadow-2xl mt-1"
-                                style={{ marginLeft: '-80px' }}
+                                style={{ marginLeft: "-80px" }}
                               >
                                 <p className="text-[11px] text-slate-200 whitespace-nowrap">
                                   Observations identified by the vision AI model
@@ -900,58 +905,73 @@ export default function App() {
                           </div>
                         </div>
 
-                        {visionAgent?.claims && visionAgent.claims.length > 0 ? (
+                        {visionAgent?.claims &&
+                        visionAgent.claims.length > 0 ? (
                           <div className="space-y-2">
-                            {visionAgent.claims.map((claim: any, idx: number) => {
-                              const confidence = Math.round((claim.confidence || 0) * 100);
-                              const confidenceLabel = confidence >= 80 ? "High" : confidence >= 60 ? "Moderate" : "Low";
-                              const confidenceDesc = confidence >= 80 
-                                ? "Strong evidence detected" 
-                                : confidence >= 60 
-                                  ? "Likely present, verify clinically" 
-                                  : "Uncertain, requires review";
-                              
-                              return (
-                                <div
-                                  key={idx}
-                                  className="bg-[#0a0e14] border border-[#2a3441] hover:border-blue-500/30 rounded-lg p-3 transition-all"
-                                >
-                                  {/* Header with confidence */}
-                                  <div className="flex items-start justify-between gap-3 mb-1.5">
-                                    <p className="text-sm text-slate-200 leading-relaxed flex-1">
-                                      {formatObservationText(claim.value || claim.label || "")}
-                                    </p>
-                                    
-                                    {/* Confidence bar - top right */}
-                                    <div className="flex items-center gap-1.5 group/tip relative flex-shrink-0">
-                                      <div className="h-1 w-12 bg-blue-500/20 rounded-full overflow-hidden cursor-help">
-                                        <div 
-                                          className="h-full bg-blue-500 rounded-full transition-all duration-500"
-                                          style={{ width: `${confidence}%` }}
-                                        />
-                                      </div>
-                                      <span className="text-[10px] text-blue-400 font-medium">
-                                        {confidence}%
-                                      </span>
-                                      
-                                      {/* Tooltip */}
-                                      <div className="absolute bottom-full right-0 mb-2 z-50 opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all duration-200 pointer-events-none">
-                                        <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
-                                          <div className="flex items-center gap-2">
-                                            <div className="w-2 h-2 rounded-full bg-blue-400" />
-                                            <span className="text-[10px] font-bold text-white">{confidenceLabel} Confidence</span>
-                                          </div>
-                                          <p className="text-[10px] text-slate-400 mt-1">
-                                            {confidenceDesc}
-                                          </p>
+                            {visionAgent.claims.map(
+                              (claim: any, idx: number) => {
+                                const confidence = Math.round(
+                                  (claim.confidence || 0) * 100,
+                                );
+                                const confidenceLabel =
+                                  confidence >= 80
+                                    ? "High"
+                                    : confidence >= 60
+                                      ? "Moderate"
+                                      : "Low";
+                                const confidenceDesc =
+                                  confidence >= 80
+                                    ? "Strong evidence detected"
+                                    : confidence >= 60
+                                      ? "Likely present, verify clinically"
+                                      : "Uncertain, requires review";
+
+                                return (
+                                  <div
+                                    key={idx}
+                                    className="bg-[#0a0e14] border border-[#2a3441] hover:border-blue-500/30 rounded-lg p-3 transition-all"
+                                  >
+                                    {/* Header with confidence */}
+                                    <div className="flex items-start justify-between gap-3 mb-1.5">
+                                      <p className="text-sm text-slate-200 leading-relaxed flex-1">
+                                        {formatObservationText(
+                                          claim.value || claim.label || "",
+                                        )}
+                                      </p>
+
+                                      {/* Confidence bar - top right */}
+                                      <div className="flex items-center gap-1.5 group/tip relative flex-shrink-0">
+                                        <div className="h-1 w-12 bg-blue-500/20 rounded-full overflow-hidden cursor-help">
+                                          <div
+                                            className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                                            style={{ width: `${confidence}%` }}
+                                          />
                                         </div>
-                                        <div className="absolute right-4 -bottom-1 w-2 h-2 bg-slate-900 border-r border-b border-slate-700 rotate-45" />
+                                        <span className="text-[10px] text-blue-400 font-medium">
+                                          {confidence}%
+                                        </span>
+
+                                        {/* Tooltip */}
+                                        <div className="absolute bottom-full right-0 mb-2 z-50 opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all duration-200 pointer-events-none">
+                                          <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
+                                            <div className="flex items-center gap-2">
+                                              <div className="w-2 h-2 rounded-full bg-blue-400" />
+                                              <span className="text-[10px] font-bold text-white">
+                                                {confidenceLabel} Confidence
+                                              </span>
+                                            </div>
+                                            <p className="text-[10px] text-slate-400 mt-1">
+                                              {confidenceDesc}
+                                            </p>
+                                          </div>
+                                          <div className="absolute right-4 -bottom-1 w-2 h-2 bg-slate-900 border-r border-b border-slate-700 rotate-45" />
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              },
+                            )}
                           </div>
                         ) : visionAgent?.observation ? (
                           <div className="bg-[#0a0e14] border border-[#2a3441] rounded-lg p-4">
@@ -960,7 +980,9 @@ export default function App() {
                             </p>
                           </div>
                         ) : (
-                          <p className="text-sm text-slate-500 italic">No findings available</p>
+                          <p className="text-sm text-slate-500 italic">
+                            No findings available
+                          </p>
                         )}
                       </div>
                     </div>
@@ -996,6 +1018,7 @@ export default function App() {
               </div>
               <button
                 onClick={() => setShowAcousticModal(false)}
+                aria-label="Close acoustic modal"
                 className="p-2 hover:bg-white/5 rounded-lg transition-colors group"
               >
                 <X className="w-4 h-4 text-slate-400 group-hover:text-white" />
@@ -1021,7 +1044,7 @@ export default function App() {
                             {[...Array(24)].map((_, i) => (
                               <div
                                 key={i}
-                                className={`w-2 rounded-t transition-all duration-300 ${isAudioPlaying ? 'bg-emerald-500 animate-pulse' : 'bg-emerald-500/40'}`}
+                                className={`w-2 rounded-t transition-all duration-300 ${isAudioPlaying ? "bg-emerald-500 animate-pulse" : "bg-emerald-500/40"}`}
                                 style={{
                                   height: `${20 + Math.sin(i * 0.5) * 30 + 20}%`,
                                   animationDelay: `${i * 0.05}s`,
@@ -1029,7 +1052,7 @@ export default function App() {
                               />
                             ))}
                           </div>
-                          
+
                           {/* Audio player */}
                           {audioFile && (
                             <audio
@@ -1066,64 +1089,83 @@ export default function App() {
                           <div className="relative group/info">
                             <Info className="w-3.5 h-3.5 text-slate-500 hover:text-emerald-400 cursor-help transition-colors" />
                             <div className="fixed z-[9999] hidden group-hover/info:block">
-                              <div className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 shadow-2xl mt-1" style={{ marginLeft: '-80px' }}>
+                              <div
+                                className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 shadow-2xl mt-1"
+                                style={{ marginLeft: "-80px" }}
+                              >
                                 <p className="text-[11px] text-slate-200 whitespace-nowrap">
-                                  Observations identified by the acoustic AI model
+                                  Observations identified by the acoustic AI
+                                  model
                                 </p>
                               </div>
                             </div>
                           </div>
                         </div>
 
-                        {acousticAgent?.claims && acousticAgent.claims.length > 0 ? (
+                        {acousticAgent?.claims &&
+                        acousticAgent.claims.length > 0 ? (
                           <div className="space-y-2">
-                            {acousticAgent.claims.map((claim: any, idx: number) => {
-                              const confidence = Math.round((claim.confidence || 0) * 100);
-                              const confidenceLabel = confidence >= 80 ? "High" : confidence >= 60 ? "Moderate" : "Low";
-                              const confidenceDesc = confidence >= 80 
-                                ? "Strong evidence detected" 
-                                : confidence >= 60 
-                                  ? "Likely present, verify clinically" 
-                                  : "Uncertain, requires review";
-                              
-                              return (
-                                <div
-                                  key={idx}
-                                  className="bg-[#0a0e14] border border-[#2a3441] hover:border-emerald-500/30 rounded-lg p-3 transition-all"
-                                >
-                                  <div className="flex items-start justify-between gap-3 mb-1.5">
-                                    <p className="text-sm text-slate-200 leading-relaxed flex-1">
-                                      {formatObservationText(claim.value || claim.label || "")}
-                                    </p>
-                                    
-                                    <div className="flex items-center gap-1.5 group/tip relative flex-shrink-0">
-                                      <div className="h-1 w-12 bg-emerald-500/20 rounded-full overflow-hidden cursor-help">
-                                        <div 
-                                          className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                                          style={{ width: `${confidence}%` }}
-                                        />
-                                      </div>
-                                      <span className="text-[10px] text-emerald-400 font-medium">
-                                        {confidence}%
-                                      </span>
-                                      
-                                      <div className="absolute bottom-full right-0 mb-2 z-50 opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all duration-200 pointer-events-none">
-                                        <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
-                                          <div className="flex items-center gap-2">
-                                            <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                                            <span className="text-[10px] font-bold text-white">{confidenceLabel} Confidence</span>
-                                          </div>
-                                          <p className="text-[10px] text-slate-400 mt-1">
-                                            {confidenceDesc}
-                                          </p>
+                            {acousticAgent.claims.map(
+                              (claim: any, idx: number) => {
+                                const confidence = Math.round(
+                                  (claim.confidence || 0) * 100,
+                                );
+                                const confidenceLabel =
+                                  confidence >= 80
+                                    ? "High"
+                                    : confidence >= 60
+                                      ? "Moderate"
+                                      : "Low";
+                                const confidenceDesc =
+                                  confidence >= 80
+                                    ? "Strong evidence detected"
+                                    : confidence >= 60
+                                      ? "Likely present, verify clinically"
+                                      : "Uncertain, requires review";
+
+                                return (
+                                  <div
+                                    key={idx}
+                                    className="bg-[#0a0e14] border border-[#2a3441] hover:border-emerald-500/30 rounded-lg p-3 transition-all"
+                                  >
+                                    <div className="flex items-start justify-between gap-3 mb-1.5">
+                                      <p className="text-sm text-slate-200 leading-relaxed flex-1">
+                                        {formatObservationText(
+                                          claim.value || claim.label || "",
+                                        )}
+                                      </p>
+
+                                      <div className="flex items-center gap-1.5 group/tip relative flex-shrink-0">
+                                        <div className="h-1 w-12 bg-emerald-500/20 rounded-full overflow-hidden cursor-help">
+                                          <div
+                                            className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                                            style={{ width: `${confidence}%` }}
+                                          />
                                         </div>
-                                        <div className="absolute right-4 -bottom-1 w-2 h-2 bg-slate-900 border-r border-b border-slate-700 rotate-45" />
+                                        <span className="text-[10px] text-emerald-400 font-medium">
+                                          {confidence}%
+                                        </span>
+
+                                        <div className="absolute bottom-full right-0 mb-2 z-50 opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all duration-200 pointer-events-none">
+                                          <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
+                                            <div className="flex items-center gap-2">
+                                              <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                                              <span className="text-[10px] font-bold text-white">
+                                                {confidenceLabel} Confidence
+                                              </span>
+                                            </div>
+                                            <p className="text-[10px] text-slate-400 mt-1">
+                                              {confidenceDesc}
+                                            </p>
+                                          </div>
+                                          <div className="absolute right-4 -bottom-1 w-2 h-2 bg-slate-900 border-r border-b border-slate-700 rotate-45" />
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              },
+                            )}
                           </div>
                         ) : acousticAgent?.observation ? (
                           <div className="bg-[#0a0e14] border border-[#2a3441] rounded-lg p-4">
@@ -1132,7 +1174,9 @@ export default function App() {
                             </p>
                           </div>
                         ) : (
-                          <p className="text-sm text-slate-500 italic">No findings available</p>
+                          <p className="text-sm text-slate-500 italic">
+                            No findings available
+                          </p>
                         )}
                       </div>
                     </div>
@@ -1169,6 +1213,7 @@ export default function App() {
               </div>
               <button
                 onClick={() => setShowClinicianModal(false)}
+                aria-label="Close clinician modal"
                 className="p-2 hover:bg-white/5 rounded-lg transition-colors group"
               >
                 <X className="w-4 h-4 text-slate-400 group-hover:text-white" />
@@ -1192,7 +1237,9 @@ export default function App() {
                         <div className="aspect-square bg-[#0a0e14] rounded-lg border border-[#2a3441] overflow-hidden mb-3 flex items-center justify-center">
                           <div className="text-center">
                             <Brain className="w-16 h-16 text-purple-500/30 mx-auto mb-2" />
-                            <p className="text-[10px] text-slate-500">Clinical Synthesis</p>
+                            <p className="text-[10px] text-slate-500">
+                              Clinical Synthesis
+                            </p>
                           </div>
                         </div>
                         <div className="relative group/model inline-block">
@@ -1218,9 +1265,13 @@ export default function App() {
                           <div className="relative group/info">
                             <Info className="w-3.5 h-3.5 text-slate-500 hover:text-purple-400 cursor-help transition-colors" />
                             <div className="fixed z-[9999] hidden group-hover/info:block">
-                              <div className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 shadow-2xl mt-1" style={{ marginLeft: '-80px' }}>
+                              <div
+                                className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 shadow-2xl mt-1"
+                                style={{ marginLeft: "-80px" }}
+                              >
                                 <p className="text-[11px] text-slate-200 whitespace-nowrap">
-                                  Synthesized clinical observations by lead clinician AI
+                                  Synthesized clinical observations by lead
+                                  clinician AI
                                 </p>
                               </div>
                             </div>
@@ -1242,23 +1293,25 @@ export default function App() {
                                     <p className="text-sm text-slate-200 leading-relaxed flex-1">
                                       {observation.trim()}
                                     </p>
-                                    
+
                                     <div className="flex items-center gap-1.5 group/tip relative flex-shrink-0">
                                       <div className="h-1 w-12 bg-purple-500/20 rounded-full overflow-hidden cursor-help">
-                                        <div 
+                                        <div
                                           className="h-full bg-purple-500 rounded-full transition-all duration-500"
-                                          style={{ width: '85%' }}
+                                          style={{ width: "85%" }}
                                         />
                                       </div>
                                       <span className="text-[10px] text-purple-400 font-medium">
                                         85%
                                       </span>
-                                      
+
                                       <div className="absolute bottom-full right-0 mb-2 z-50 opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all duration-200 pointer-events-none">
                                         <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
                                           <div className="flex items-center gap-2">
                                             <div className="w-2 h-2 rounded-full bg-purple-400" />
-                                            <span className="text-[10px] font-bold text-white">High Confidence</span>
+                                            <span className="text-[10px] font-bold text-white">
+                                              High Confidence
+                                            </span>
                                           </div>
                                           <p className="text-[10px] text-slate-400 mt-1">
                                             Strong clinical correlation
@@ -1272,7 +1325,9 @@ export default function App() {
                               ))}
                           </div>
                         ) : (
-                          <p className="text-sm text-slate-500 italic">No observations available</p>
+                          <p className="text-sm text-slate-500 italic">
+                            No observations available
+                          </p>
                         )}
                       </div>
                     </div>
@@ -1310,6 +1365,7 @@ export default function App() {
               </div>
               <button
                 onClick={() => setShowFullVerdict(false)}
+                aria-label="Close verdict modal"
                 className="p-2 hover:bg-white/5 rounded-lg transition-colors group"
               >
                 <X className="w-5 h-5 text-slate-400 group-hover:text-white" />
@@ -1476,6 +1532,7 @@ export default function App() {
               </div>
               <button
                 onClick={() => setShowFullDirectives(false)}
+                aria-label="Close directives modal"
                 className="p-2 hover:bg-white/5 rounded-lg transition-colors group"
               >
                 <X className="w-5 h-5 text-slate-400 group-hover:text-white" />
@@ -1542,13 +1599,14 @@ export default function App() {
           {/* Close button */}
           <button
             onClick={() => setShowFullImage(false)}
+            aria-label="Close full image modal"
             className="absolute top-6 right-6 p-3 bg-slate-800/80 hover:bg-slate-700 rounded-full transition-colors group z-10"
           >
             <X className="w-6 h-6 text-slate-400 group-hover:text-white" />
           </button>
-          
+
           {/* Image container */}
-          <div 
+          <div
             className="relative max-w-[90vw] max-h-[90vh] bg-[#0a0e14] rounded-xl border border-[#2a3441] overflow-hidden shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
@@ -1570,7 +1628,7 @@ export default function App() {
               </div>
             )}
           </div>
-          
+
           {/* Instructions */}
           <p className="absolute bottom-6 left-1/2 -translate-x-1/2 text-[11px] text-slate-500">
             Click anywhere or press ESC to close
