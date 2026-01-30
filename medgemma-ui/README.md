@@ -20,7 +20,7 @@ Phase 1 established the foundational architecture using a sequential processing 
 
 - **AudioAgent**: Processes auscultation audio (lung sounds, heart sounds)
 - **VisionAgent**: Analyzes medical imaging (X-rays, CT scans)
-- **LeadClinician**: Synthesizes findings and generates final diagnosis
+- **LeadClinician**: Synthesizes findings and generates the final diagnosis
 
 ### Phase 1 Flow
 
