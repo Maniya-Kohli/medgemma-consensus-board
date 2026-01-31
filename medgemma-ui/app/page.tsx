@@ -200,6 +200,11 @@ const useAnalysisStream = () => {
     setStreamingThought("");
     setThinkingSteps(["🎯 Establishing connection to Clinical Blackboard..."]);
 
+    // ✅ DEBUG: Log the API URL
+    console.log("🚀 API URL:", NEXT_PUBLIC_API_URL);
+    console.log("🚀 Full endpoint:", `${NEXT_PUBLIC_API_URL}/run`);
+    console.log("🚀 Case ID:", currentCaseId);
+
     try {
       const response = await fetch(`${NEXT_PUBLIC_API_URL}/run`, {
         method: "POST",
@@ -210,55 +215,86 @@ const useAnalysisStream = () => {
         }),
       });
 
+      // ✅ DEBUG: Log response details
+      console.log("📡 Response status:", response.status);
+      console.log("📡 Response ok:", response.ok);
+      console.log("📡 Content-Type:", response.headers.get("content-type"));
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.log("❌ Error body:", errorText);
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      if (!response.body) throw new Error("Stream not supported.");
+      if (!response.body) {
+        console.log("❌ No response.body");
+        throw new Error("Stream not supported.");
+      }
+
+      console.log("✅ Starting to read stream...");
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-
-      // ✅ FIX: Buffer for incomplete chunks across network packets
       let buffer = "";
+      let chunkCount = 0;
 
       while (true) {
         const { value, done } = await reader.read();
 
+        // ✅ DEBUG: Log every chunk
+        chunkCount++;
+        console.log(`📦 Chunk #${chunkCount}:`, {
+          done,
+          valueLength: value?.length || 0,
+        });
+
         if (done) {
-          console.log("Stream ended");
+          console.log("🏁 Stream done. Total chunks:", chunkCount);
+          console.log("🏁 Remaining buffer:", buffer);
           break;
         }
 
-        // ✅ FIX: Append to buffer instead of processing directly
-        buffer += decoder.decode(value, { stream: true });
+        const decoded = decoder.decode(value, { stream: true });
+        console.log(`📝 Raw chunk #${chunkCount}:`, decoded);
 
-        // ✅ FIX: Split by double newline (SSE standard)
+        buffer += decoded;
         const parts = buffer.split("\n\n");
-
-        // ✅ FIX: Keep last potentially incomplete part in buffer
         buffer = parts.pop() || "";
+
+        console.log(
+          `🔍 Split into ${parts.length} parts, buffer left: ${buffer.length} chars`,
+        );
 
         for (const part of parts) {
           const line = part.trim();
 
-          // Skip empty lines
-          if (!line) continue;
+          if (!line) {
+            console.log("⏭️ Skipping empty line");
+            continue;
+          }
 
-          // Must start with "data: "
-          if (!line.startsWith("data: ")) continue;
+          if (!line.startsWith("data: ")) {
+            console.log("⏭️ Skipping non-data line:", line.substring(0, 50));
+            continue;
+          }
+
+          const jsonStr = line.slice(6);
+          console.log("📨 JSON to parse:", jsonStr.substring(0, 150));
+
+          if (!jsonStr) {
+            console.log("⏭️ Empty JSON string");
+            continue;
+          }
 
           try {
-            const jsonStr = line.slice(6); // Remove "data: "
-
-            // Skip empty JSON strings
-            if (!jsonStr) continue;
-
             const data = JSON.parse(jsonStr);
             const dataType = data.type || "";
 
+            console.log("✅ Parsed event:", dataType, data);
+
             switch (dataType) {
               case "status": {
+                console.log("📊 Status event received");
                 const msg = data.message || "";
                 const metadata = data.metadata || {};
                 let enrichedMsg = msg;
@@ -274,6 +310,7 @@ const useAnalysisStream = () => {
               }
 
               case "agent_start": {
+                console.log("🚀 Agent start event received");
                 const agentName = data.agent || "Agent";
                 const agentIcons: Record<string, string> = {
                   AudioAgent: "🎤",
@@ -289,6 +326,7 @@ const useAnalysisStream = () => {
               }
 
               case "agent_complete": {
+                console.log("✅ Agent complete event received");
                 const agentName = data.agent || "Agent";
                 setThinkingSteps((prev) => [
                   ...prev,
@@ -304,7 +342,7 @@ const useAnalysisStream = () => {
               }
 
               case "final": {
-                // ✅ USE THE FIXED PARSING FUNCTION
+                console.log("🏁 FINAL event received!", data);
                 const finalResult = parseStreamFinalEvent(data, currentCaseId);
                 onFinal(finalResult);
                 setStreamingThought("");
@@ -313,19 +351,35 @@ const useAnalysisStream = () => {
                   `🏁 Analysis complete: ${finalResult.agent_reports.length} agents contributed`,
                 ]);
                 setIsStreaming(false);
-                return; // ✅ FIX: Exit cleanly after final
+                return;
+              }
+
+              case "heartbeat": {
+                console.log("💓 Heartbeat received:", data.message);
+                setThinkingSteps((prev) => {
+                  const lastStep = prev[prev.length - 1];
+                  if (
+                    lastStep?.includes("Processing...") ||
+                    lastStep?.includes("💓")
+                  ) {
+                    return [...prev.slice(0, -1), `💓 ${data.message}`];
+                  }
+                  return [...prev, `💓 ${data.message}`];
+                });
+                break;
               }
 
               case "error": {
+                console.log("❌ Error event received:", data.message);
                 const errorMsg = data.message || "Unknown error occurred";
                 setThinkingSteps((prev) => [...prev, `❌ Error: ${errorMsg}`]);
                 onError(errorMsg);
                 setIsStreaming(false);
-                return; // ✅ FIX: Exit on error
+                return;
               }
 
               default: {
-                // Handle agent_complete events from Colab format
+                console.log("❓ Unknown event type:", dataType, data);
                 if (data.agent && data.status === "completed") {
                   setThinkingSteps((prev) => [
                     ...prev,
@@ -336,15 +390,17 @@ const useAnalysisStream = () => {
               }
             }
           } catch (parseError) {
-            console.warn("Failed to parse stream data:", line, parseError);
+            console.warn("❌ JSON parse failed:", parseError);
+            console.warn("❌ Raw line was:", line);
             continue;
           }
         }
       }
 
-      // ✅ FIX: Handle case where stream ends without "final" event
+      console.log("⚠️ Stream ended without final event");
       setIsStreaming(false);
     } catch (err) {
+      console.error("💥 Fatal error:", err);
       const errorMessage =
         err instanceof Error ? err.message : "Analysis session crashed";
       onError(errorMessage);
