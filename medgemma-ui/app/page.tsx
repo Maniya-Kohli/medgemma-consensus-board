@@ -67,6 +67,129 @@ const useAnalysisStream = () => {
   const [streamingThought, setStreamingThought] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
 
+  //   const streamAnalysis = async (
+  //     currentCaseId: string,
+  //     clinicalHistory: string,
+  //     onFinal: (result: AnalysisResult) => void,
+  //     onError: (error: string) => void,
+  //   ) => {
+  //     setIsStreaming(true);
+  //     setStreamingThought("");
+  //     setThinkingSteps(["🎯 Establishing connection to Clinical Blackboard..."]);
+
+  //     try {
+  //       const response = await fetch(`${NEXT_PUBLIC_API_URL}/run`, {
+  //         method: "POST",
+  //         headers: { "Content-Type": "application/json" },
+  //         body: JSON.stringify({
+  //           case_id: currentCaseId,
+  //           clinical_note_text: clinicalHistory,
+  //         }),
+  //       });
+
+  //       if (!response.body) throw new Error("Stream not supported.");
+
+  //       const reader = response.body.getReader();
+  //       const decoder = new TextDecoder();
+
+  //       while (true) {
+  //         const { value, done } = await reader.read();
+  //         if (done) break;
+
+  //         const chunk = decoder.decode(value);
+  //         const lines = chunk.split("\n\n");
+
+  //         for (const line of lines) {
+  //           if (!line.startsWith("data: ")) continue;
+
+  //           try {
+  //             const data = JSON.parse(line.replace("data: ", ""));
+  //             const dataType = data.type || "";
+
+  //             switch (dataType) {
+  //               case "status": {
+  //                 const msg = data.message || "";
+  //                 const metadata = data.metadata || {};
+  //                 let enrichedMsg = msg;
+
+  //                 if (metadata.findings_count !== undefined) {
+  //                   enrichedMsg = `${msg} [${metadata.findings_count} findings]`;
+  //                 }
+  //                 if (metadata.focus_areas && metadata.focus_areas.length > 0) {
+  //                   enrichedMsg += ` 🎯 Focus: ${metadata.focus_areas.join(", ")}`;
+  //                 }
+  //                 setThinkingSteps((prev) => [...prev, enrichedMsg]);
+  //                 break;
+  //               }
+
+  //               case "agent_start": {
+  //                 const agentName = data.agent || "Agent";
+  //                 const agentIcons: Record<string, string> = {
+  //                   AudioAgent: "🎤",
+  //                   VisionAgent: "👁️",
+  //                   LeadClinician: "🧠",
+  //                 };
+  //                 const icon = agentIcons[agentName] || "🤖";
+  //                 setThinkingSteps((prev) => [
+  //                   ...prev,
+  //                   `${icon} ${agentName} analysis initiated...`,
+  //                 ]);
+  //                 break;
+  //               }
+
+  //               case "agent_complete": {
+  //                 const agentName = data.agent || "Agent";
+  //                 setThinkingSteps((prev) => [
+  //                   ...prev,
+  //                   `✅ ${agentName} completed successfully`,
+  //                 ]);
+  //                 break;
+  //               }
+
+  //               case "thought": {
+  //                 const token = data.delta || "";
+  //                 setStreamingThought((prev) => prev + token);
+  //                 break;
+  //               }
+
+  //               case "final": {
+  //                 // ✅ USE THE FIXED PARSING FUNCTION
+  //                 const finalResult = parseStreamFinalEvent(data, currentCaseId);
+  //                 onFinal(finalResult);
+  //                 setStreamingThought("");
+  //                 setThinkingSteps((prev) => [
+  //                   ...prev,
+  //                   `🏁 Analysis complete: ${finalResult.agent_reports.length} agents contributed`,
+  //                 ]);
+  //                 setIsStreaming(false);
+  //                 break;
+  //               }
+
+  //               case "error": {
+  //                 const errorMsg = data.message || "Unknown error occurred";
+  //                 setThinkingSteps((prev) => [...prev, `❌ Error: ${errorMsg}`]);
+  //                 onError(errorMsg);
+  //                 setIsStreaming(false);
+  //                 break;
+  //               }
+  //             }
+  //           } catch (parseError) {
+  //             console.warn("Failed to parse stream data:", parseError);
+  //             continue;
+  //           }
+  //         }
+  //       }
+  //     } catch (err) {
+  //       const errorMessage =
+  //         err instanceof Error ? err.message : "Analysis session crashed";
+  //       onError(errorMessage);
+  //       setThinkingSteps((prev) => [...prev, `💥 Fatal Error: ${errorMessage}`]);
+  //       setIsStreaming(false);
+  //     }
+  //   };
+
+  //   return { thinkingSteps, streamingThought, isStreaming, streamAnalysis };
+  // };
   const streamAnalysis = async (
     currentCaseId: string,
     clinicalHistory: string,
@@ -87,23 +210,51 @@ const useAnalysisStream = () => {
         }),
       });
 
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
       if (!response.body) throw new Error("Stream not supported.");
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
 
+      // ✅ FIX: Buffer for incomplete chunks across network packets
+      let buffer = "";
+
       while (true) {
         const { value, done } = await reader.read();
-        if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n\n");
+        if (done) {
+          console.log("Stream ended");
+          break;
+        }
 
-        for (const line of lines) {
+        // ✅ FIX: Append to buffer instead of processing directly
+        buffer += decoder.decode(value, { stream: true });
+
+        // ✅ FIX: Split by double newline (SSE standard)
+        const parts = buffer.split("\n\n");
+
+        // ✅ FIX: Keep last potentially incomplete part in buffer
+        buffer = parts.pop() || "";
+
+        for (const part of parts) {
+          const line = part.trim();
+
+          // Skip empty lines
+          if (!line) continue;
+
+          // Must start with "data: "
           if (!line.startsWith("data: ")) continue;
 
           try {
-            const data = JSON.parse(line.replace("data: ", ""));
+            const jsonStr = line.slice(6); // Remove "data: "
+
+            // Skip empty JSON strings
+            if (!jsonStr) continue;
+
+            const data = JSON.parse(jsonStr);
             const dataType = data.type || "";
 
             switch (dataType) {
@@ -162,7 +313,7 @@ const useAnalysisStream = () => {
                   `🏁 Analysis complete: ${finalResult.agent_reports.length} agents contributed`,
                 ]);
                 setIsStreaming(false);
-                break;
+                return; // ✅ FIX: Exit cleanly after final
               }
 
               case "error": {
@@ -170,15 +321,29 @@ const useAnalysisStream = () => {
                 setThinkingSteps((prev) => [...prev, `❌ Error: ${errorMsg}`]);
                 onError(errorMsg);
                 setIsStreaming(false);
+                return; // ✅ FIX: Exit on error
+              }
+
+              default: {
+                // Handle agent_complete events from Colab format
+                if (data.agent && data.status === "completed") {
+                  setThinkingSteps((prev) => [
+                    ...prev,
+                    `✅ ${data.agent} completed successfully`,
+                  ]);
+                }
                 break;
               }
             }
           } catch (parseError) {
-            console.warn("Failed to parse stream data:", parseError);
+            console.warn("Failed to parse stream data:", line, parseError);
             continue;
           }
         }
       }
+
+      // ✅ FIX: Handle case where stream ends without "final" event
+      setIsStreaming(false);
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : "Analysis session crashed";
