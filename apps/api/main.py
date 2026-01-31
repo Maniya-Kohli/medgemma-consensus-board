@@ -889,6 +889,157 @@ async def call_cloud_consensus(case_id: str, imaging_txt: str, audio_txt: str, h
 
 #     return StreamingResponse(stream_protocol(), media_type="text/event-stream")
 
+# @app.post("/run")
+# async def run_case(case: CaseInput):
+#     async def stream_protocol():
+#         target_dir = f"artifacts/runs/{case.case_id}"
+#         image_path = os.path.join(target_dir, "xray.jpg")
+#         audio_path = os.path.join(target_dir, "audio.wav")
+
+#         opened_files = []
+#         try:
+#             # 1. Initialize the payloads
+#             files_payload = {}
+#             if os.path.exists(image_path):
+#                 f_img = open(image_path, "rb")
+#                 opened_files.append(f_img)
+#                 files_payload["image"] = ("vision.jpg", f_img, "image/jpeg")
+            
+#             if os.path.exists(audio_path):
+#                 f_aud = open(audio_path, "rb")
+#                 opened_files.append(f_aud)
+#                 files_payload["audio"] = ("audio.wav", f_aud, "audio/wav")
+
+#             payload = {
+#                 "history": json.dumps([{"role": "user", "content": case.clinical_note_text}])
+#             }
+
+#             # 2. Start the stream to Google Colab
+#             async with httpx.AsyncClient(timeout=None, verify=False) as client:
+#                 async with client.stream(
+#                     "POST", 
+#                     f"{API_URL}/consensus", 
+#                     data=payload,
+#                     files=files_payload
+#                 ) as response:
+                    
+#                     if response.status_code != 200:
+#                         error_body = await response.aread()
+#                         yield f'data: {json.dumps({"type": "error", "message": f"Colab error: {error_body.decode()}"})}\n\n'
+#                         return
+                    
+#                     async for line in response.aiter_lines():
+#                         if not line.strip():
+#                             continue
+                        
+#                         # Handle both "data: " prefixed and raw JSON
+#                         clean_line = line
+#                         if line.startswith("data: "):
+#                             clean_line = line[6:]
+                        
+#                         try:
+#                             colab_data = json.loads(clean_line)
+#                             msg_type = colab_data.get("type", "")
+                            
+#                             # STATUS EVENTS - Add required metadata
+#                             if msg_type == "status" or "STATUS:" in colab_data.get("message", ""):
+#                                 status_msg = colab_data.get("message", "").replace("STATUS:", "").strip()
+#                                 status_response = {
+#                                     "type": "status",
+#                                     "message": status_msg,
+#                                     "metadata": {
+#                                         "findings_count": colab_data.get("findings_count", 0),
+#                                         "focus_areas": colab_data.get("focus_areas", []),
+#                                         "state": "processing"
+#                                     }
+#                                 }
+#                                 yield f'data: {json.dumps(status_response)}\n\n'
+                            
+#                             # AGENT START EVENTS
+#                             elif "Dispatching" in colab_data.get("message", ""):
+#                                 agent_name = colab_data.get("message", "").split("Dispatching")[-1].strip().rstrip("...")
+#                                 yield f'data: {json.dumps({"type": "agent_start", "agent": agent_name})}\n\n'
+                            
+#                             # AGENT COMPLETE EVENTS
+#                             elif "completed" in colab_data.get("message", "").lower():
+#                                 agent_name = colab_data.get("message", "").split()[0] if colab_data.get("message") else "Agent"
+#                                 yield f'data: {json.dumps({"type": "agent_complete", "agent": agent_name})}\n\n'
+                            
+#                             # THOUGHT STREAMING
+#                             elif msg_type == "thought":
+#                                 yield f'data: {json.dumps({"type": "thought", "delta": colab_data.get("delta", "")})}\n\n'
+                            
+#                             elif ">>" in colab_data.get("message", ""):
+#                                 token = colab_data.get("message", "").split(">>")[-1]
+#                                 yield f'data: {json.dumps({"type": "thought", "delta": token})}\n\n'
+                            
+#                             # FINAL RESULT - Critical fix
+#                             elif msg_type == "final":
+#                                 parsed = colab_data.get("parsed", {})
+                                
+#                                 # Build complete final response
+#                                 final_response = {
+#                                     "type": "final",
+#                                     "parsed": {
+#                                         "condition": parsed.get("condition", "Undetermined"),
+#                                         "confidence": float(parsed.get("confidence", 0.5)),
+#                                         "diagnosis": parsed.get("diagnosis", ""),
+#                                         "reasoning": parsed.get("reasoning", ""),
+#                                         "differential_diagnosis": parsed.get("differential_diagnosis", []),
+#                                         "consensus_summary": parsed.get("consensus_summary", "")
+#                                     },
+#                                     "case_id": case.case_id,
+#                                     "audit_trail": colab_data.get("audit_trail", []),
+#                                     "agent_reports": colab_data.get("agent_reports", []),
+#                                     "raw_logic": colab_data.get("raw_logic", ""),
+#                                     "thought_process": colab_data.get("thought_process", ""),
+#                                     "recommended_data_actions": parsed.get("differential_diagnosis", []),
+#                                     "discrepancy_alert": {
+#                                         "score": float(parsed.get("confidence", 0.5)),
+#                                         "summary": parsed.get("consensus_summary", "")
+#                                     }
+#                                 }
+                                
+#                                 yield f'data: {json.dumps(final_response)}\n\n'
+                            
+#                             # ERROR EVENTS
+#                             elif msg_type == "error":
+#                                 yield f'data: {json.dumps({"type": "error", "message": colab_data.get("message", "Unknown error")})}\n\n'
+                            
+#                             # FALLBACK - Pass through unknown events
+#                             else:
+#                                 yield f'data: {json.dumps(colab_data)}\n\n'
+                                
+#                         except json.JSONDecodeError as e:
+#                             # Log but continue - don't break the stream
+#                             print(f"⚠️ JSON parse error: {e} | Line: {clean_line[:100]}")
+#                             continue
+#                         except Exception as e:
+#                             print(f"⚠️ Stream processing error: {e}")
+#                             continue
+
+#         except httpx.ConnectError:
+#             yield f'data: {json.dumps({"type": "error", "message": "Cannot connect to Colab. Is ngrok running?"})}\n\n'
+#         except Exception as e:
+#             print(f"💥 Gateway Error: {str(e)}")
+#             yield f'data: {json.dumps({"type": "error", "message": f"Stream failed: {str(e)}"})}\n\n'
+#         finally:
+#             for f in opened_files:
+#                 f.close()
+
+#     # ✅ FIX: Added headers to disable proxy buffering
+#     return StreamingResponse(
+#         stream_protocol(), 
+#         media_type="text/event-stream",
+#         headers={
+#             "Cache-Control": "no-cache, no-store, must-revalidate",
+#             "Pragma": "no-cache",
+#             "Expires": "0",
+#             "X-Accel-Buffering": "no",  # Disables nginx/reverse proxy buffering
+#             "Connection": "keep-alive",
+#         }
+#     )
+
 @app.post("/run")
 async def run_case(case: CaseInput):
     async def stream_protocol():
@@ -941,8 +1092,13 @@ async def run_case(case: CaseInput):
                             colab_data = json.loads(clean_line)
                             msg_type = colab_data.get("type", "")
                             
+                            # ✅ HEARTBEAT EVENTS - Keep connection alive (ADD THIS FIRST!)
+                            if msg_type == "heartbeat":
+                                print(f"💓 Forwarding heartbeat: {colab_data.get('count', 0)}")
+                                yield f'data: {json.dumps({"type": "heartbeat", "count": colab_data.get("count", 0), "message": colab_data.get("message", "Processing...")})}\n\n'
+                            
                             # STATUS EVENTS - Add required metadata
-                            if msg_type == "status" or "STATUS:" in colab_data.get("message", ""):
+                            elif msg_type == "status" or "STATUS:" in colab_data.get("message", ""):
                                 status_msg = colab_data.get("message", "").replace("STATUS:", "").strip()
                                 status_response = {
                                     "type": "status",
@@ -960,9 +1116,9 @@ async def run_case(case: CaseInput):
                                 agent_name = colab_data.get("message", "").split("Dispatching")[-1].strip().rstrip("...")
                                 yield f'data: {json.dumps({"type": "agent_start", "agent": agent_name})}\n\n'
                             
-                            # AGENT COMPLETE EVENTS
-                            elif "completed" in colab_data.get("message", "").lower():
-                                agent_name = colab_data.get("message", "").split()[0] if colab_data.get("message") else "Agent"
+                            # AGENT COMPLETE EVENTS - Fixed to handle both formats
+                            elif msg_type == "agent_complete" or "completed" in colab_data.get("message", "").lower():
+                                agent_name = colab_data.get("agent", "") or (colab_data.get("message", "").split()[0] if colab_data.get("message") else "Agent")
                                 yield f'data: {json.dumps({"type": "agent_complete", "agent": agent_name})}\n\n'
                             
                             # THOUGHT STREAMING
@@ -973,11 +1129,10 @@ async def run_case(case: CaseInput):
                                 token = colab_data.get("message", "").split(">>")[-1]
                                 yield f'data: {json.dumps({"type": "thought", "delta": token})}\n\n'
                             
-                            # FINAL RESULT - Critical fix
+                            # FINAL RESULT
                             elif msg_type == "final":
                                 parsed = colab_data.get("parsed", {})
                                 
-                                # Build complete final response
                                 final_response = {
                                     "type": "final",
                                     "parsed": {
@@ -1011,7 +1166,6 @@ async def run_case(case: CaseInput):
                                 yield f'data: {json.dumps(colab_data)}\n\n'
                                 
                         except json.JSONDecodeError as e:
-                            # Log but continue - don't break the stream
                             print(f"⚠️ JSON parse error: {e} | Line: {clean_line[:100]}")
                             continue
                         except Exception as e:
@@ -1027,7 +1181,6 @@ async def run_case(case: CaseInput):
             for f in opened_files:
                 f.close()
 
-    # ✅ FIX: Added headers to disable proxy buffering
     return StreamingResponse(
         stream_protocol(), 
         media_type="text/event-stream",
@@ -1035,7 +1188,7 @@ async def run_case(case: CaseInput):
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Pragma": "no-cache",
             "Expires": "0",
-            "X-Accel-Buffering": "no",  # Disables nginx/reverse proxy buffering
+            "X-Accel-Buffering": "no",
             "Connection": "keep-alive",
         }
     )
