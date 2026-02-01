@@ -13,22 +13,30 @@ import { AnalysisResult, VisionReport } from "../types";
 import { NEXT_PUBLIC_API_URL } from "../constants";
 
 const parseObservations = (text: string): string[] => {
+  const cleanMarkdown = (str: string): string => {
+    return str
+      .replace(/\*\*\*/g, "")
+      .replace(/\*\*/g, "")
+      .replace(/\*/g, "")
+      .replace(/__/g, "")
+      .replace(/_/g, " ")
+      .replace(/#{1,6}\s*/g, "")
+      .replace(/^\s*•\s*/g, "")
+      .replace(/^\s*-\s*/g, "")
+      .trim();
+  };
+
   const observations = text
     .split(
       /(?:Observation\s*\d+\s*:|Hypothesis\s*\d+\s*:|Pattern\s*\d+\s*:|Finding\s*\d+\s*:|Claim\s*\d+\s*:|•|\n-|\n\*|\n\d+\.)/,
     )
-    .map((s) =>
-      s
-        .replace(/^\s*•\s*/g, "")
-        .replace(/^\s*-\s*/g, "")
-        .trim(),
-    )
+    .map((s) => cleanMarkdown(s))
     .filter((s) => s.length > 0);
 
   if (observations.length === 0) {
     return text
       .split(/[.!?]+/)
-      .map((s) => s.replace(/^\s*-\s*/g, "").trim())
+      .map((s) => cleanMarkdown(s))
       .filter((s) => s.length > 10)
       .slice(0, 5);
   }
