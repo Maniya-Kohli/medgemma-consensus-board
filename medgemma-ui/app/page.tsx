@@ -428,7 +428,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mode, setMode] = useState<"library" | "upload">("upload");
 
   // Modal states (add these two new ones)
@@ -580,10 +580,12 @@ export default function App() {
 
       <aside
         className={`transition-all duration-300 ease-in-out bg-[#151b26] border-r border-[#2a3441] flex flex-col z-20 shrink-0 ${
-          sidebarOpen ? "w-72" : "w-0 overflow-hidden border-none"
+          sidebarOpen
+            ? "w-72 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:w-[85%] max-md:max-w-[300px] max-md:shadow-2xl"
+            : "w-0 overflow-hidden border-none"
         }`}
       >
-        <div className="flex flex-col h-full min-w-[18rem]">
+        <div className="flex flex-col h-full min-w-[18rem] max-md:min-w-0 max-md:w-full">
           {/* Sidebar Header */}
           <div className="p-4 border-b border-[#2a3441] flex items-center gap-2.5 shrink-0">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
@@ -749,7 +751,7 @@ export default function App() {
       <main className="flex-1 flex flex-col relative overflow-hidden transition-all duration-300 bg-[#0d1117]">
         {/* Header */}
 
-        <header className="h-14 bg-[#151b26]/80 backdrop-blur-xl border-b border-[#2a3441] px-6 flex items-center justify-between shrink-0 z-10">
+        <header className="h-14 bg-[#151b26]/80 backdrop-blur-xl border-b border-[#2a3441] px-4 md:px-6 flex items-center justify-between shrink-0 z-10">
           <div className="flex items-center gap-4">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -762,24 +764,34 @@ export default function App() {
               )}
             </button>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm text-white">Session</h2>
-              <span className="text-sm text-blue-500 font-mono">
+              <h2 className="text-sm text-white max-sm:hidden">Session</h2>
+              <span className="text-sm text-blue-500 font-mono max-sm:text-xs">
                 {sessionId || "..."}
               </span>
             </div>
           </div>
           <div className="flex items-center gap-4">
             {analysisResult && (
-              <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-white/10 text-[9px] text-slate-400 uppercase tracking-wider">
-                <Activity className="w-3 h-3 text-blue-500" /> Live Consensus
+              <div className="flex items-center gap-2 px-2 md:px-3 py-1 bg-white/5 rounded-full border border-white/10 text-[8px] md:text-[9px] text-slate-400 uppercase tracking-wider">
+                <Activity className="w-3 h-3 text-blue-500" />
+                <span className="max-sm:hidden">Live Consensus</span>
+                <span className="sm:hidden">Live</span>
               </div>
             )}
           </div>
         </header>
 
+        {/* Mobile overlay when sidebar is open */}
+        {sidebarOpen && (
+          <div
+            className="md:hidden fixed inset-0 bg-black/50 z-10"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
-          <div className="w-full mx-auto space-y-6">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 scroll-smooth">
+          <div className="w-full mx-auto space-y-4 md:space-y-6">
             {/* Initial State */}
             {!analysisResult && !loading && (
               <div className="h-[70vh] flex flex-col items-center justify-center text-center space-y-8 animate-in fade-in duration-700">
@@ -790,67 +802,53 @@ export default function App() {
                   </div>
                 </div>
                 <div className="space-y-2 max-w-lg">
-                  <h3 className="text-lg text-white">
+                  <h3 className="text-sm text-white">
                     Welcome to <span className="font-bold">Momo Clinical</span>
                   </h3>
-                  <p className="text-[9px] text-blue-500 uppercase tracking-wider">
-                    Neural Consensus
-                  </p>
                   <p className="text-xs text-slate-500 leading-relaxed mt-2">
                     Multi-agent AI for integrated diagnostic analysis of chest
                     X-rays and respiratory audio.
                   </p>
                 </div>
 
+                {/* Hint to open sidebar */}
+                <p className="text-xs text-slate-400 flex items-center gap-2">
+                  <Menu className="w-3.5 h-3.5 text-blue-500" />
+                  Click the menu icon in the top-left to open the sidebar and begin.
+                </p>
+
                 {/* Getting Started Steps */}
-                <div className="bg-[#151b26] border border-[#2a3441] rounded-xl p-4 max-w-sm w-full">
+                <div className="bg-[#151b26] border border-[#2a3441] rounded-xl p-4 max-w-sm w-full mx-4 md:mx-0">
                   <h4 className="text-xs text-white mb-3 flex items-center gap-2">
                     <ClipboardList className="w-3.5 h-3.5 text-blue-500" />
                     Getting Started
                   </h4>
                   <div className="space-y-2.5 text-left">
                     <div className="flex items-start gap-2">
-                      <span className="text-xs text-blue-500 font-mono">
-                        1.
-                      </span>
+                      <span className="text-xs text-blue-500">1.</span>
                       <div>
-                        <p className="text-xs text-white">
-                          Upload Medical Files
-                        </p>
-                        <p className="text-[10px] text-slate-500">
-                          Add chest X-ray and respiratory audio recordings
-                        </p>
+                        <p className="text-xs text-white">Upload Medical Files</p>
+                        <p className="text-xs text-slate-500">Add chest X-ray and/or respiratory audio</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-2">
-                      <span className="text-xs text-blue-500 font-mono">
-                        2.
-                      </span>
+                      <span className="text-xs text-blue-500">2.</span>
                       <div>
-                        <p className="text-xs text-white">
-                          Enter Clinical Context
-                        </p>
-                        <p className="text-[10px] text-slate-500">
-                          Provide patient history and symptoms
-                        </p>
+                        <p className="text-xs text-white">Enter Clinical Context</p>
+                        <p className="text-xs text-slate-500">Provide patient history and symptoms</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-2">
-                      <span className="text-xs text-blue-500 font-mono">
-                        3.
-                      </span>
+                      <span className="text-xs text-blue-500">3.</span>
                       <div>
                         <p className="text-xs text-white">Run Analysis</p>
-                        <p className="text-[10px] text-slate-500">
-                          Click &quot;Run Analysis&quot; to get diagnostic
-                          insights
-                        </p>
+                        <p className="text-xs text-slate-500">Get AI-powered diagnostic insights</p>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <p className="text-[10px] text-slate-600 max-w-sm">
+                <p className="text-xs text-slate-600 max-w-sm">
                   ⚕️ This tool is designed to assist healthcare professionals.
                   Always verify AI suggestions with clinical judgment.
                 </p>
@@ -891,7 +889,7 @@ export default function App() {
             {analysisResult && (
               <>
                 {/* Tab Navigation */}
-                <div className="flex gap-1 p-1 bg-[#151b26] rounded-xl border border-[#2a3441] w-fit shadow-lg">
+                <div className="flex gap-1 p-1 bg-[#151b26] rounded-xl border border-[#2a3441] w-fit shadow-lg overflow-x-auto max-w-full">
                   {[
                     { id: "overview", label: "Verdict", icon: ShieldAlert },
                     { id: "evidence", label: "Evidence", icon: Microscope },
@@ -900,14 +898,15 @@ export default function App() {
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`px-5 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all ${
+                      className={`px-3 md:px-5 py-2 rounded-lg text-[9px] md:text-[10px] font-black uppercase tracking-wider md:tracking-widest flex items-center gap-1.5 md:gap-2 transition-all whitespace-nowrap ${
                         activeTab === tab.id
                           ? "bg-blue-600 text-white shadow-md shadow-blue-900/20"
                           : "text-slate-500 hover:text-slate-300 hover:bg-white/5"
                       }`}
                     >
-                      <tab.icon className="w-3.5 h-3.5" />
-                      {tab.label}
+                      <tab.icon className="w-3 h-3 md:w-3.5 md:h-3.5" />
+                      <span className="max-sm:hidden">{tab.label}</span>
+                      <span className="sm:hidden">{tab.id === "audit" ? "Audit" : tab.label}</span>
                     </button>
                   ))}
                 </div>
@@ -916,7 +915,7 @@ export default function App() {
                   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     {/* Primary Verdict Section */}
                     {analysisResult?.discrepancy_alert ? (
-                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6 items-stretch">
                         <VerdictCard
                           analysisResult={analysisResult}
                           setShowFullVerdict={setShowFullVerdict}
@@ -971,7 +970,7 @@ export default function App() {
                 )}
                 {activeTab === "evidence" && (
                   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                       <RadiographicCard
                         xrayFile={xrayFile}
                         analysisResult={analysisResult}
@@ -1055,11 +1054,11 @@ export default function App() {
           onClick={() => setShowImagingModal(false)}
         >
           <div
-            className="bg-[#151b26] border border-[#2a3441] rounded-2xl w-full max-w-6xl max-h-[85vh] overflow-hidden shadow-2xl animate-in slide-in-from-bottom-4 duration-500"
+            className="bg-[#151b26] border border-[#2a3441] rounded-2xl w-full max-w-6xl max-h-[85vh] overflow-hidden shadow-2xl animate-in slide-in-from-bottom-4 duration-500 mx-2 md:mx-0"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Compact Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a3441] bg-gradient-to-r from-blue-500/5 to-purple-500/5">
+            <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-[#2a3441] bg-gradient-to-r from-blue-500/5 to-purple-500/5">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
                   <Microscope className="w-4 h-4 text-blue-400" />
@@ -1092,9 +1091,9 @@ export default function App() {
                   );
 
                   return (
-                    <div className="flex">
+                    <div className="flex flex-col md:flex-row">
                       {/* Left: Image Preview */}
-                      <div className="w-80 flex-shrink-0 border-r border-[#2a3441] p-4">
+                      <div className="w-full md:w-80 flex-shrink-0 border-b md:border-b-0 md:border-r border-[#2a3441] p-4">
                         <div
                           className="aspect-square bg-[#0a0e14] rounded-lg border border-[#2a3441] overflow-hidden mb-3 relative group/img cursor-pointer"
                           onClick={(e) => {
@@ -1254,14 +1253,14 @@ export default function App() {
       {/* Acoustic Modal */}
       {showAcousticModal && (
         <div
-          className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in duration-300"
+          className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-2 md:p-6 animate-in fade-in duration-300"
           onClick={() => setShowAcousticModal(false)}
         >
           <div
             className="bg-[#151b26] border border-[#2a3441] rounded-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl animate-in slide-in-from-bottom-4 duration-500"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a3441] bg-gradient-to-r from-emerald-500/5 to-cyan-500/5">
+            <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-[#2a3441] bg-gradient-to-r from-emerald-500/5 to-cyan-500/5">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
                   <Volume2 className="w-4 h-4 text-emerald-400" />
@@ -1294,9 +1293,9 @@ export default function App() {
                   );
 
                   return (
-                    <div className="flex">
+                    <div className="flex flex-col md:flex-row">
                       {/* Left: Audio Player */}
-                      <div className="w-80 flex-shrink-0 border-r border-[#2a3441] p-4">
+                      <div className="w-full md:w-80 flex-shrink-0 border-b md:border-b-0 md:border-r border-[#2a3441] p-4">
                         <div className="aspect-square bg-[#0a0e14] rounded-lg border border-[#2a3441] overflow-hidden mb-3 flex flex-col items-center justify-center p-4">
                           {/* Audio visualization bars */}
                           <div className="h-20 flex items-end gap-1 mb-4">
@@ -1449,14 +1448,14 @@ export default function App() {
       {/* Lead Clinician Modal */}
       {showClinicianModal && (
         <div
-          className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in duration-300"
+          className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-2 md:p-6 animate-in fade-in duration-300"
           onClick={() => setShowClinicianModal(false)}
         >
           <div
             className="bg-[#151b26] border border-[#2a3441] rounded-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl animate-in slide-in-from-bottom-4 duration-500"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a3441] bg-gradient-to-r from-purple-500/5 to-pink-500/5">
+            <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-[#2a3441] bg-gradient-to-r from-purple-500/5 to-pink-500/5">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-purple-500/10 flex items-center justify-center border border-purple-500/20">
                   <Brain className="w-4 h-4 text-purple-400" />
@@ -1490,10 +1489,10 @@ export default function App() {
                   );
 
                   return (
-                    <div className="flex">
+                    <div className="flex flex-col md:flex-row">
                       {/* Left: Brain Visualization */}
-                      <div className="w-80 flex-shrink-0 border-r border-[#2a3441] p-4">
-                        <div className="aspect-square bg-[#0a0e14] rounded-lg border border-[#2a3441] overflow-hidden mb-3 flex items-center justify-center">
+                      <div className="w-full md:w-80 flex-shrink-0 border-b md:border-b-0 md:border-r border-[#2a3441] p-4">
+                        <div className="aspect-video md:aspect-square bg-[#0a0e14] rounded-lg border border-[#2a3441] overflow-hidden mb-3 flex items-center justify-center">
                           <div className="text-center">
                             <Brain className="w-16 h-16 text-purple-500/30 mx-auto mb-2" />
                             <p className="text-[10px] text-slate-500">
@@ -1600,7 +1599,7 @@ export default function App() {
       {/* Verdict Modal */}
       {showFullVerdict && (
         <div
-          className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in duration-300"
+          className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-2 md:p-6 animate-in fade-in duration-300"
           onClick={() => setShowFullVerdict(false)}
         >
           <div
@@ -1608,7 +1607,7 @@ export default function App() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-6 border-b border-[#2a3441] bg-gradient-to-r from-blue-500/5 to-purple-500/5">
+            <div className="flex items-center justify-between p-4 md:p-6 border-b border-[#2a3441] bg-gradient-to-r from-blue-500/5 to-purple-500/5">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
                   <ShieldAlert className="w-5 h-5 text-blue-400" />
@@ -1632,9 +1631,9 @@ export default function App() {
             </div>
 
             {/* Modal Content */}
-            <div className="overflow-y-auto max-h-[calc(90vh-80px)] p-6 space-y-6">
+            <div className="overflow-y-auto max-h-[calc(90vh-80px)] p-4 md:p-6 space-y-4 md:space-y-6">
               {/* Confidence Meter */}
-              <div className="bg-gradient-to-r from-blue-500/5 to-purple-500/5 border border-blue-500/20 rounded-xl p-6">
+              <div className="bg-gradient-to-r from-blue-500/5 to-purple-500/5 border border-blue-500/20 rounded-xl p-4 md:p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-bold text-white">
                     Consensus Confidence
@@ -1767,7 +1766,7 @@ export default function App() {
       {/* Directives Modal */}
       {showFullDirectives && (
         <div
-          className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in duration-300"
+          className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-2 md:p-6 animate-in fade-in duration-300"
           onClick={() => setShowFullDirectives(false)}
         >
           <div
@@ -1775,7 +1774,7 @@ export default function App() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-6 border-b border-[#2a3441] bg-gradient-to-r from-blue-500/5 to-blue-600/5">
+            <div className="flex items-center justify-between p-4 md:p-6 border-b border-[#2a3441] bg-gradient-to-r from-blue-500/5 to-blue-600/5">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
                   <ClipboardList className="w-5 h-5 text-blue-400" />
