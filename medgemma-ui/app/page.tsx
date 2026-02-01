@@ -32,6 +32,12 @@ import { generateSessionId, parseStreamFinalEvent } from "./utils";
 
 const formatObservationText = (text: string): string => {
   return text
+    .replace(/\*\*\*/g, "")
+    .replace(/\*\*/g, "")
+    .replace(/\*/g, "")
+    .replace(/__/g, "")
+    .replace(/_/g, " ")
+    .replace(/#{1,6}\s*/g, "")
     .replace(/Observation\s*\d+\s*:\s*/gi, "")
     .replace(/Pattern\s*\d+\s*:\s*/gi, "")
     .replace(/Finding\s*\d+\s*:\s*/gi, "")
@@ -415,7 +421,7 @@ const useAnalysisStream = () => {
 export default function App() {
   // State Management
   const [selectedCase, setSelectedCase] = useState<string>("CASE_A-2401");
-  const [sessionId, setSessionId] = useState(generateSessionId());
+  const [sessionId, setSessionId] = useState("");
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(
     null,
   );
@@ -423,7 +429,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [mode, setMode] = useState<"library" | "upload">("library");
+  const [mode, setMode] = useState<"library" | "upload">("upload");
 
   // Modal states (add these two new ones)
   const [showImagingModal, setShowImagingModal] = useState(false);
@@ -445,6 +451,11 @@ export default function App() {
   const xrayInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const audioPlayerRef = useRef<HTMLAudioElement>(null);
+
+  // Generate session ID on client side only to avoid hydration mismatch
+  useEffect(() => {
+    setSessionId(generateSessionId());
+  }, []);
 
   // Custom hook
   const { thinkingSteps, streamingThought, isStreaming, streamAnalysis } =
@@ -503,7 +514,7 @@ export default function App() {
     setClinicalHistory("");
     setXrayFile(null);
     setAudioFile(null);
-    setMode("library");
+    setMode("upload");
     setError(null);
     setShowFullVerdict(false);
     setShowFullDirectives(false);
@@ -520,7 +531,7 @@ export default function App() {
     setError(null);
     setAnalysisResult(null);
 
-    const currentCaseId = mode === "library" ? selectedCase : sessionId;
+    const currentCaseId = sessionId;
 
     try {
       // 1. UPLOAD PHASE (if in upload mode)
@@ -582,132 +593,100 @@ export default function App() {
               <h1 className="text-sm text-white leading-tight">
                 Momo Clinical
               </h1>
-              <p className="text-[9px] text-slate-500 uppercase tracking-wider">
-                Neural Consensus
-              </p>
             </div>
           </div>
 
           {/* Sidebar Content */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             <section className="space-y-3">
-              {/* Mode Toggle */}
-              <div className="grid grid-cols-2 bg-[#0a0e14] p-1 rounded-lg border border-[#2a3441]">
-                <button
-                  onClick={() => setMode("library")}
-                  className={`py-1.5 text-[9px] uppercase tracking-wider rounded-md transition-all ${
-                    mode === "library"
-                      ? "bg-blue-600 text-white"
-                      : "text-slate-500 hover:text-slate-300"
-                  }`}
-                >
-                  Library
-                </button>
-                <button
-                  onClick={() => setMode("upload")}
-                  className={`py-1.5 text-[9px] uppercase tracking-wider rounded-md transition-all ${
-                    mode === "upload"
-                      ? "bg-blue-600 text-white"
-                      : "text-slate-500 hover:text-slate-300"
-                  }`}
-                >
-                  New Case
-                </button>
+              {/* New Case Header */}
+              <div className="bg-blue-600/10 border border-blue-500/30 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-5 h-5 bg-blue-600 rounded flex items-center justify-center">
+                    <ClipboardList className="w-3 h-3 text-white" />
+                  </div>
+                  <h3 className="text-xs font-semibold text-white">
+                    Add New Case
+                  </h3>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  Upload patient data to begin AI-assisted clinical analysis.
+                </p>
               </div>
 
-              {/* Case Selection / File Upload */}
-              {mode === "library" ? (
-                <div>
-                  <label className="block text-[9px] text-slate-500 uppercase mb-1.5 tracking-wider">
-                    Case ID
-                  </label>
-                  <select
-                    value={selectedCase}
-                    onChange={(e) => setSelectedCase(e.target.value)}
-                    aria-label="Select Case ID"
-                    className="w-full bg-[#1a212d] border border-[#2a3441] rounded-lg px-2.5 py-2 text-xs text-white outline-none cursor-pointer focus:border-blue-500/50"
-                  >
-                    {Object.keys(CASES).map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <label className="block text-[9px] text-slate-500 uppercase tracking-wider">
-                    Modalities
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="flex flex-col gap-1 w-full">
-                      <button
-                        onClick={() => xrayInputRef.current?.click()}
-                        className={`flex flex-col items-center justify-center gap-1.5 bg-[#1a212d] border rounded-lg p-2.5 text-[9px] transition-all ${
-                          xrayFile
-                            ? "border-blue-500 bg-blue-500/5"
-                            : "border-[#2a3441] hover:border-blue-500/50"
+              {/* File Upload for New Case */}
+              <div className="space-y-2">
+                <label className="block text-[9px] text-slate-500 uppercase tracking-wider">
+                  Step 1: Upload Modalities
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex flex-col gap-1 w-full">
+                    <button
+                      onClick={() => xrayInputRef.current?.click()}
+                      className={`flex flex-col items-center justify-center gap-1.5 bg-[#1a212d] border rounded-lg p-2.5 text-[9px] transition-all ${
+                        xrayFile
+                          ? "border-blue-500 bg-blue-500/5"
+                          : "border-[#2a3441] hover:border-blue-500/50"
+                      }`}
+                    >
+                      <FileText
+                        className={`w-3.5 h-3.5 ${
+                          xrayFile ? "text-blue-400" : "text-slate-500"
                         }`}
-                      >
-                        <FileText
-                          className={`w-3.5 h-3.5 ${
-                            xrayFile ? "text-blue-400" : "text-slate-500"
-                          }`}
-                        />
-                        <span className="truncate w-full text-center uppercase tracking-wider">
-                          {xrayFile ? "Ready" : "X-Ray"}
-                        </span>
-                      </button>
-                      <span className="text-[8px] text-center text-slate-600 uppercase tracking-wider">
-                        Max 10MB, JPG/PNG
+                      />
+                      <span className="truncate w-full text-center uppercase tracking-wider">
+                        {xrayFile ? "Ready" : "X-Ray"}
                       </span>
-                    </div>
-                    <div className="flex flex-col gap-1 w-full">
-                      <button
-                        onClick={() => audioInputRef.current?.click()}
-                        className={`flex flex-col items-center justify-center gap-1.5 bg-[#1a212d] border rounded-lg p-2.5 text-[9px] transition-all ${
-                          audioFile
-                            ? "border-emerald-500 bg-emerald-500/5"
-                            : "border-[#2a3441] hover:border-emerald-500/50"
-                        }`}
-                      >
-                        <Activity
-                          className={`w-3.5 h-3.5 ${
-                            audioFile ? "text-emerald-400" : "text-slate-500"
-                          }`}
-                        />
-                        <span className="truncate w-full text-center uppercase tracking-wider">
-                          {audioFile ? "Ready" : "Audio"}
-                        </span>
-                      </button>
-                      <span className="text-[8px] text-center text-slate-600 uppercase tracking-wider">
-                        Max 20MB, WAV/MP3
-                      </span>
-                    </div>
+                    </button>
+                    <span className="text-[8px] text-center text-slate-600 uppercase tracking-wider">
+                      Max 10MB, JPG/PNG
+                    </span>
                   </div>
-                  <input
-                    type="file"
-                    ref={xrayInputRef}
-                    className="hidden"
-                    accept=".jpg,.jpeg,.png,image/jpeg,image/png"
-                    onChange={handleXrayChange}
-                    aria-label="Upload X-Ray image"
-                  />
-                  <input
-                    type="file"
-                    ref={audioInputRef}
-                    className="hidden"
-                    accept=".wav,.mp3,audio/wav,audio/mpeg"
-                    onChange={handleAudioChange}
-                    aria-label="Upload audio file"
-                  />
+                  <div className="flex flex-col gap-1 w-full">
+                    <button
+                      onClick={() => audioInputRef.current?.click()}
+                      className={`flex flex-col items-center justify-center gap-1.5 bg-[#1a212d] border rounded-lg p-2.5 text-[9px] transition-all ${
+                        audioFile
+                          ? "border-emerald-500 bg-emerald-500/5"
+                          : "border-[#2a3441] hover:border-emerald-500/50"
+                      }`}
+                    >
+                      <Activity
+                        className={`w-3.5 h-3.5 ${
+                          audioFile ? "text-emerald-400" : "text-slate-500"
+                        }`}
+                      />
+                      <span className="truncate w-full text-center uppercase tracking-wider">
+                        {audioFile ? "Ready" : "Audio"}
+                      </span>
+                    </button>
+                    <span className="text-[8px] text-center text-slate-600 uppercase tracking-wider">
+                      Max 20MB, WAV/MP3
+                    </span>
+                  </div>
                 </div>
-              )}
+                <input
+                  type="file"
+                  ref={xrayInputRef}
+                  className="hidden"
+                  accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                  onChange={handleXrayChange}
+                  aria-label="Upload X-Ray image"
+                />
+                <input
+                  type="file"
+                  ref={audioInputRef}
+                  className="hidden"
+                  accept=".wav,.mp3,audio/wav,audio/mpeg"
+                  onChange={handleAudioChange}
+                  aria-label="Upload audio file"
+                />
+              </div>
 
               {/* Clinical History */}
               <div className="space-y-1.5">
                 <label className="block text-[9px] text-slate-500 uppercase tracking-wider flex justify-between">
-                  Clinical Context
+                  Step 2: Clinical Context
                   <span className="text-blue-500">Required</span>
                 </label>
                 <textarea
@@ -785,7 +764,7 @@ export default function App() {
             <div className="flex items-center gap-2">
               <h2 className="text-sm text-white">Session</h2>
               <span className="text-sm text-blue-500 font-mono">
-                {mode === "library" ? selectedCase : sessionId}
+                {sessionId || "..."}
               </span>
             </div>
           </div>
@@ -803,22 +782,78 @@ export default function App() {
           <div className="w-full mx-auto space-y-6">
             {/* Initial State */}
             {!analysisResult && !loading && (
-              <div className="h-[70vh] flex flex-col items-center justify-center text-center space-y-6 animate-in fade-in duration-700">
+              <div className="h-[70vh] flex flex-col items-center justify-center text-center space-y-8 animate-in fade-in duration-700">
                 <div className="relative">
                   <div className="absolute inset-0 bg-blue-500/10 blur-3xl rounded-full scale-150 animate-pulse" />
-                  <div className="w-16 h-16 bg-[#151b26] border border-[#2a3441] rounded-lg flex items-center justify-center relative z-10">
-                    <Shield className="w-8 h-8 text-slate-700" />
+                  <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center relative z-10 shadow-lg shadow-blue-500/20">
+                    <Shield className="w-8 h-8 text-white" />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <h3 className="text-base text-white">
-                    System Ready for Adjudication
+                <div className="space-y-2 max-w-lg">
+                  <h3 className="text-lg text-white">
+                    Welcome to <span className="font-bold">Momo Clinical</span>
                   </h3>
-                  <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
-                    Upload clinical modalities or select a library case to
-                    initiate the MedGemma consensus protocol.
+                  <p className="text-[9px] text-blue-500 uppercase tracking-wider">
+                    Neural Consensus
+                  </p>
+                  <p className="text-xs text-slate-500 leading-relaxed mt-2">
+                    Multi-agent AI for integrated diagnostic analysis of chest
+                    X-rays and respiratory audio.
                   </p>
                 </div>
+
+                {/* Getting Started Steps */}
+                <div className="bg-[#151b26] border border-[#2a3441] rounded-xl p-4 max-w-sm w-full">
+                  <h4 className="text-xs text-white mb-3 flex items-center gap-2">
+                    <ClipboardList className="w-3.5 h-3.5 text-blue-500" />
+                    Getting Started
+                  </h4>
+                  <div className="space-y-2.5 text-left">
+                    <div className="flex items-start gap-2">
+                      <span className="text-xs text-blue-500 font-mono">
+                        1.
+                      </span>
+                      <div>
+                        <p className="text-xs text-white">
+                          Upload Medical Files
+                        </p>
+                        <p className="text-[10px] text-slate-500">
+                          Add chest X-ray and respiratory audio recordings
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-xs text-blue-500 font-mono">
+                        2.
+                      </span>
+                      <div>
+                        <p className="text-xs text-white">
+                          Enter Clinical Context
+                        </p>
+                        <p className="text-[10px] text-slate-500">
+                          Provide patient history and symptoms
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-xs text-blue-500 font-mono">
+                        3.
+                      </span>
+                      <div>
+                        <p className="text-xs text-white">Run Analysis</p>
+                        <p className="text-[10px] text-slate-500">
+                          Click &quot;Run Analysis&quot; to get diagnostic
+                          insights
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-slate-600 max-w-sm">
+                  ⚕️ This tool is designed to assist healthcare professionals.
+                  Always verify AI suggestions with clinical judgment.
+                </p>
               </div>
             )}
 
@@ -1740,10 +1775,10 @@ export default function App() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-6 border-b border-[#2a3441] bg-gradient-to-r from-emerald-500/5 to-cyan-500/5">
+            <div className="flex items-center justify-between p-6 border-b border-[#2a3441] bg-gradient-to-r from-blue-500/5 to-blue-600/5">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
-                  <ClipboardList className="w-5 h-5 text-emerald-400" />
+                <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+                  <ClipboardList className="w-5 h-5 text-blue-400" />
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-white">
@@ -1777,11 +1812,11 @@ export default function App() {
               ).map((directive: string, idx: number) => (
                 <div
                   key={idx}
-                  className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-5 hover:bg-emerald-500/10 transition-colors group"
+                  className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-5 hover:bg-blue-500/10 transition-colors group"
                 >
                   <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 shrink-0 group-hover:scale-110 transition-transform">
-                      <span className="text-sm font-black text-emerald-400">
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20 shrink-0 group-hover:scale-110 transition-transform">
+                      <span className="text-sm font-black text-blue-400">
                         {idx + 1}
                       </span>
                     </div>
@@ -1804,7 +1839,7 @@ export default function App() {
                   <span className="text-xs text-slate-500">
                     Total critical actions identified
                   </span>
-                  <span className="text-xl font-black text-emerald-400">
+                  <span className="text-xl font-black text-blue-400">
                     {analysisResult?.recommended_data_actions?.length || 4}
                   </span>
                 </div>
