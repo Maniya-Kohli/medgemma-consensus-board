@@ -475,6 +475,8 @@ Check out the [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 - Implement request queuing for concurrent cases
 - Monitor GPU memory usage
 
+### Commands
+
 pip3 install -r requirements.txt
 python3 -m uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --reload
 
